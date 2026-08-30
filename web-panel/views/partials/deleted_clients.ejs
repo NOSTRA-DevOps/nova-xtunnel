@@ -1,0 +1,27 @@
+<div class="panel">
+  <div class="panel-head">
+    <h2><%= t('deleted.title') %></h2>
+  </div>
+  <% if (deletedClients.length === 0) { %>
+    <div class="empty-state"><%= t('deleted.empty') %></div>
+  <% } else { %>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th><%= t('clients.th.identifier') %></th><th><%= t('clients.th.type') %></th><th><%= t('deleted.th.quota_kept') %></th><th><%= t('deleted.th.created') %></th><th><%= t('deleted.th.deleted') %></th></tr>
+    </thead>
+    <tbody>
+      <% deletedClients.forEach(c => { %>
+      <tr>
+        <td class="mono"><%= c.identifier %></td>
+        <td><%= c.type === 'ssh' ? 'SSH' : 'ZiVPN' %></td>
+        <td class="mono"><%= c.usage_at_deletion_gb == null ? t('deleted.unlimited_uncounted') : fmtData(c.usage_at_deletion_gb) %></td>
+        <td class="mono"><%= c.created_at %></td>
+        <td class="mono"><%= c.deleted_at %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>

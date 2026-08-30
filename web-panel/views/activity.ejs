@@ -1,0 +1,37 @@
+<%- include('partials/head', { title: 'NOVA X Tunnel — ' + t('nav.activity') }) %>
+<div class="shell">
+  <%- include('partials/sidebar') %>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <a href="<%= backUrl %>" class="btn-ghost small" style="margin-bottom:10px; display:inline-block;"><%= t('common.back') %></a>
+        <h1 class="page-title"><%= t('nav.activity') %></h1>
+      </div>
+    </div>
+
+    <div class="panel">
+      <% if (activity.length === 0) { %>
+        <div class="empty-state"><%= t('activity.empty') %></div>
+      <% } else { %>
+      <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th><%= t('activity.th.date') %></th><th><%= t('activity.th.author') %></th><th><%= t('activity.th.action') %></th></tr>
+        </thead>
+        <tbody>
+          <% activity.forEach(a => { %>
+          <tr>
+            <td class="mono" style="white-space:nowrap;"><%= a.created_at %></td>
+            <td class="mono"><%= a.actor_name %> <span class="quota-text">(<%= a.actor_type %>)</span></td>
+            <td><%= a.message %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+      </div>
+      <% } %>
+    </div>
+  </main>
+</div>
+</body>
+</html>

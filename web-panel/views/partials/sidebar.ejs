@@ -1,0 +1,68 @@
+<div class="mobile-topbar">
+  <button class="nav-toggle" id="navToggle" aria-label="<%= t('nav.open_menu') %>">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 4.5H16M2 9H16M2 13.5H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+  </button>
+  <div class="brand" style="font-size:15px;">NOVA X TUNNEL</div>
+  <form method="POST" action="/logout">
+    <button type="submit" class="nav-toggle" aria-label="<%= t('nav.logout') %>" title="<%= t('nav.logout') %>">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 2.5H4a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 4 15.5h3M12 12.5 15.5 9 12 5.5M15.5 9H6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </form>
+</div>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+<div class="sidebar" id="sidebar">
+  <div class="brand">
+    <svg class="pulse-mark" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="15" cy="15" r="3" fill="#22D3EE"/>
+      <circle cx="15" cy="15" r="3" stroke="#7C5CFF" stroke-width="1.5" fill="none"/>
+      <circle cx="15" cy="15" r="3" stroke="#22D3EE" stroke-width="1.2" fill="none"/>
+    </svg>
+    NOVA X TUNNEL
+    <span class="version-tag">v<%= typeof version !== 'undefined' ? version : '2.0' %></span>
+  </div>
+
+  <% if (role === 'admin') { %>
+  <div class="nav-group">
+    <div class="nav-label"><%= t('nav.admin_group') %></div>
+    <a class="nav-link active" href="/admin"><%= t('nav.resellers') %></a>
+    <a class="nav-link" href="/admin/system"><%= t('nav.system') %></a>
+  </div>
+  <% } else { %>
+  <div class="nav-group">
+    <div class="nav-label"><%= t('nav.account_group') %></div>
+    <a class="nav-link active" href="/reseller"><%= t('nav.my_clients') %></a>
+  </div>
+  <% } %>
+
+  <div class="nav-group">
+    <div class="nav-label"><%= t('nav.info_group') %></div>
+    <a class="nav-link" href="<%= role === 'admin' ? '/admin/activity' : '/reseller/activity' %>"><%= t('nav.activity') %></a>
+    <a class="nav-link" href="/about" target="_blank" rel="noopener"><%= t('nav.about') %></a>
+  </div>
+
+  <div class="nav-group" style="margin-top: auto;">
+    <div style="display:flex; gap:8px; padding: 0 4px 4px;">
+      <a href="/lang/fr" class="btn-ghost small" style="flex:1; text-align:center; padding:6px; font-size:12px; font-weight:<%= lang === 'fr' ? '700' : '500' %>; <%= lang === 'fr' ? 'border-color: var(--violet); color: var(--text);' : '' %>">FR</a>
+      <a href="/lang/en" class="btn-ghost small" style="flex:1; text-align:center; padding:6px; font-size:12px; font-weight:<%= lang === 'en' ? '700' : '500' %>; <%= lang === 'en' ? 'border-color: var(--violet); color: var(--text);' : '' %>">EN</a>
+    </div>
+    <form method="POST" action="/logout">
+      <button class="btn-ghost" style="width:100%;" type="submit"><%= t('nav.logout') %></button>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('sidebarBackdrop');
+    var toggle = document.getElementById('navToggle');
+    if (!toggle) return;
+    function close() { sidebar.classList.remove('open'); backdrop.classList.remove('open'); }
+    toggle.addEventListener('click', function () {
+      sidebar.classList.toggle('open');
+      backdrop.classList.toggle('open');
+    });
+    backdrop.addEventListener('click', close);
+  })();
+</script>

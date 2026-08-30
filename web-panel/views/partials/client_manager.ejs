@@ -1,0 +1,245 @@
+<div class="panel">
+  <div class="panel-head"><h2><%= t('clients.create_title') %></h2></div>
+
+  <% if (allowedProtocols.length === 0) { %>
+    <div class="empty-state"><%= t('clients.no_protocols') %></div>
+  <% } else { %>
+  <form method="POST" action="<%= createAction %>">
+    <label><%= t('clients.account_type') %></label>
+    <select name="type" id="client-type-select" onchange="toggleClientFields()">
+      <% if (allowedProtocols.some(p => p.key.startsWith('ssh') || p.key === 'slowdns')) { %>
+        <option value="ssh">SSH (WS / UDP / TLS / SlowDNS)</option>
+      <% } %>
+      <% if (allowedProtocols.some(p => p.key === 'zivpn')) { %>
+        <option value="zivpn">ZiVPN</option>
+      <% } %>
+    </select>
+
+    <div id="ssh-fields">
+      <div class="grid-2">
+        <div>
+          <label><%= t('form.username') %></label>
+          <input type="text" name="username" placeholder="<%= t('form.username_placeholder') %>">
+        </div>
+        <div>
+          <label><%= t('form.password_auto') %></label>
+          <input type="text" name="password">
+        </div>
+      </div>
+      <label><%= t('clients.protocols_for_account') %></label>
+      <div class="checkbox-row">
+        <% allowedProtocols.filter(p => p.key !== 'zivpn').forEach(p => { %>
+          <label class="checkbox-pill"><input type="checkbox" name="protocols" value="<%= p.key %>" checked> <%= p.label %></label>
+        <% }) %>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label><%= t('clients.edit.max_conn') %></label>
+          <input type="number" name="maxConnections" value="1" min="1">
+        </div>
+      </div>
+    </div>
+
+    <div id="zivpn-fields" style="display:none;">
+      <label><%= t('clients.zivpn_password') %></label>
+      <input type="text" name="password">
+      <input type="hidden" name="protocols" value="zivpn" disabled id="zivpn-protocol-hidden">
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <label><%= t('form.quota_client') %></label>
+        <input type="number" step="0.1" name="quotaGb" placeholder="<%= t('form.quota_placeholder') %>">
+      </div>
+      <div>
+        <label><%= t('common.expiry_date_empty_never') %></label>
+        <input type="date" name="expiryDate">
+      </div>
+    </div>
+
+    <button class="btn" type="submit"><%= t('clients.create_submit') %></button>
+  </form>
+  <% } %>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2><%= t('clients.title') %></h2></div>
+
+  <% if (clients.length === 0) { %>
+    <div class="empty-state"><%= t('clients.empty') %></div>
+  <% } else { %>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th><%= t('clients.th.identifier') %></th><th><%= t('clients.th.type') %></th><th><%= t('clients.th.status') %></th><th><%= t('clients.th.connections') %></th><th><%= t('clients.th.quota') %></th><th><%= t('clients.th.expiry') %></th><th></th></tr>
+    </thead>
+    <tbody>
+      <% clients.forEach(c => { %>
+      <tr>
+        <td class="mono"><%= c.identifier %></td>
+        <td><%= c.type === 'ssh' ? 'SSH' : 'ZiVPN' %></td>
+        <td><span class="pill <%= c.status %>">
+          <%= { active: t('clients.status.active'), locked_manual: t('clients.status.locked_manual'), locked_expired: t('clients.status.locked_expired'), locked_reseller: t('clients.status.locked_reseller') }[c.status] || c.status %>
+        </span></td>
+        <td class="mono"><%= c.type === 'ssh' ? ((c.onlineCount || 0) + ' / ' + c.max_connections) : '—' %></td>
+        <td class="mono">
+          <%= c.quota_gb == null ? t('common.unlimited') : fmtData(c.quota_gb) %>
+          <% if (c.usageGb != null) { %>
+            <div class="quota-text"><span class="quota-text-label"><%= t('common.used') %>:</span> <span class="quota-text-value"><%= fmtData(c.usageGb) %></span></div>
+            <% if (c.quota_gb != null && c.quota_gb > 0) {
+                 const quotaPct = Math.min(100, Math.round((c.usageGb / c.quota_gb) * 100));
+                 const quotaLevel = quotaPct >= 100 ? 'quota-bar-danger' : (quotaPct >= 80 ? 'quota-bar-warning' : '');
+            %>
+              <div class="quota-bar-row" style="margin-top:4px;">
+                <div class="quota-bar-track">
+                  <div class="quota-bar-fill <%= quotaLevel %>" style="width: <%= quotaPct %>%;"></div>
+                </div>
+                <span class="quota-bar-pct <%= quotaLevel %>"><%= quotaPct %>%</span>
+              </div>
+            <% } %>
+          <% } %>
+        </td>
+        <td class="mono"><%= c.expiry_date || t('common.never') %></td>
+        <td class="actions-cell">
+          <div class="action-menu" data-action-menu>
+            <button type="button" class="action-menu-toggle" data-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="<%= t('clients.btn.actions') %>">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="3" r="1.3" fill="currentColor"/><circle cx="8" cy="8" r="1.3" fill="currentColor"/><circle cx="8" cy="13" r="1.3" fill="currentColor"/></svg>
+            </button>
+            <div class="action-menu-dropdown">
+              <button type="button" class="action-menu-item" data-copy-target="copy-<%= c.id %>" data-copied-label="<%= t('common.copied') %>"><%= t('clients.btn.copy_info') %></button>
+              <button type="button" class="action-menu-item" onclick="toggleRow('conn-<%= c.id %>')"><%= t('clients.btn.connection') %></button>
+              <button type="button" class="action-menu-item" onclick="toggleRow('edit-<%= c.id %>')"><%= t('clients.btn.edit') %></button>
+              <button type="button" class="action-menu-item" onclick="toggleRow('pwd-<%= c.id %>')"><%= t('clients.btn.change_password') %></button>
+              <div class="action-menu-divider"></div>
+              <% if (c.type === 'ssh') { %>
+              <form method="POST" action="<%= clientBase %>/<%= c.id %>/reset-usage" class="inline" onsubmit="return confirm('<%= t('clients.reset_usage_confirm') %>');">
+                <button class="action-menu-item" type="submit"><%= t('clients.btn.reset_usage') %></button>
+              </form>
+              <% } %>
+              <form method="POST" action="<%= clientBase %>/<%= c.id %>/toggle-lock" class="inline">
+                <button class="action-menu-item" type="submit"><%= c.status === 'locked_manual' ? t('clients.btn.unlock') : t('clients.btn.lock') %></button>
+              </form>
+              <form method="POST" action="<%= clientBase %>/<%= c.id %>/delete" class="inline" onsubmit="return confirm('<%= t('clients.delete_confirm') %>');">
+                <button class="action-menu-item danger" type="submit"><%= t('clients.btn.delete') %></button>
+              </form>
+            </div>
+          </div>
+        </td>
+      </tr>
+      <tr id="conn-<%= c.id %>" class="hidden-edit">
+        <td colspan="7" class="detail-row-cell" style="background: var(--surface-alt);">
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-ghost small" onclick="toggleRow('conn-<%= c.id %>')">✕ <%= t('common.close') %></button>
+          </div>
+          <div style="padding: 0 4px 10px; display: flex; flex-wrap: wrap; gap: 20px;">
+            <div>
+              <div style="font-size:12.5px; font-weight:600; color: var(--cyan); margin-bottom:4px;"><%= t('common.credentials') %></div>
+              <div class="mono" style="font-size:12.5px; color: var(--text);"><%= c.type === 'ssh' ? t('form.username') : t('common.password') %>: <%= c.identifier %></div>
+              <% if (c.type === 'ssh' && c.password) { %>
+                <div class="mono" style="font-size:12.5px; color: var(--text);"><%= t('common.password') %>: <%= c.password %></div>
+              <% } %>
+            </div>
+            <% (c.connectionInfo || []).forEach(section => { %>
+              <div>
+                <div style="font-size:12.5px; font-weight:600; color: var(--cyan); margin-bottom:4px;"><%= section.title %></div>
+                <% section.lines.forEach(line => { %>
+                  <div class="mono" style="font-size:12.5px; color: var(--text);"><%= line %></div>
+                <% }) %>
+              </div>
+            <% }) %>
+          </div>
+          <pre id="copy-<%= c.id %>" style="display:none;">NOVA X TUNNEL — <%= c.type === 'ssh' ? t('form.username') : t('common.password') %>: <%= c.identifier %>
+<% if (c.type === 'ssh' && c.password) { %><%= t('common.password') %>: <%= c.password %>
+<% } %><% (c.connectionInfo || []).forEach(section => { %>
+<%= section.title %>:
+<% section.lines.forEach(line => { %>  <%= line %>
+<% }) %><% }) %></pre>
+        </td>
+      </tr>
+      <tr id="edit-<%= c.id %>" class="hidden-edit">
+        <td colspan="7" class="detail-row-cell" style="background: var(--surface-alt);">
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-ghost small" onclick="toggleRow('edit-<%= c.id %>')">✕ <%= t('common.close') %></button>
+          </div>
+          <form method="POST" action="<%= clientBase %>/<%= c.id %>/edit" class="grid-3" style="padding: 0 4px 10px;">
+            <% if (c.type === 'ssh') { %>
+            <div>
+              <label><%= t('clients.edit.max_conn') %></label>
+              <input type="number" name="maxConnections" value="<%= c.max_connections %>" min="1">
+            </div>
+            <% } %>
+            <div>
+              <label><%= t('form.quota_client') %></label>
+              <input type="number" step="0.1" name="quotaGb" value="<%= c.quota_gb == null ? '' : c.quota_gb %>">
+            </div>
+            <div>
+              <label><%= t('common.expiry_date') %></label>
+              <input type="date" name="expiryDate" value="<%= c.expiry_date || '' %>">
+            </div>
+            <div style="align-self:end;">
+              <button class="btn small" type="submit"><%= t('common.save') %></button>
+            </div>
+          </form>
+        </td>
+      </tr>
+      <tr id="pwd-<%= c.id %>" class="hidden-edit">
+        <td colspan="7" class="detail-row-cell" style="background: var(--surface-alt);">
+          <div style="display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-ghost small" onclick="toggleRow('pwd-<%= c.id %>')">✕ <%= t('common.close') %></button>
+          </div>
+          <form method="POST" action="<%= clientBase %>/<%= c.id %>/password" class="grid-3" style="padding: 0 4px 10px;">
+            <div>
+              <label><%= t('common.new_password') %></label>
+              <input type="text" name="new_password" placeholder="<%= t('form.password_auto') %>">
+            </div>
+            <div style="align-self:end;">
+              <button class="btn small" type="submit"><%= t('common.change_password') %></button>
+            </div>
+          </form>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>
+
+<style>.hidden-edit { display: none; }</style>
+<script>
+  function toggleRow(id) {
+    document.getElementById(id).classList.toggle('hidden-edit');
+    document.querySelectorAll('.action-menu.open').forEach((m) => m.classList.remove('open'));
+  }
+  function toggleClientFields() {
+    const type = document.getElementById('client-type-select').value;
+    document.getElementById('ssh-fields').style.display = type === 'ssh' ? 'block' : 'none';
+    document.getElementById('zivpn-fields').style.display = type === 'zivpn' ? 'block' : 'none';
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const sel = document.getElementById('client-type-select');
+    if (sel) toggleClientFields();
+    // Only submit the fields that belong to the currently-selected account type. Both
+    // sections share some field names (password, protocols) so that the same server-side
+    // field works for either type - but that also means BOTH inputs get sent together if
+    // we don't disable the hidden one: browsers/Express only skip <input disabled>, not
+    // CSS-hidden ones. Without this, submitting e.g. the SSH form also sends the empty
+    // ZiVPN password field under the same "password" key, which Express turns into an
+    // array (['Merli2341', '']) - and stringifying an array joins it with a comma,
+    // silently appending "," to the password that was actually typed.
+    const form = sel ? sel.closest('form') : null;
+    if (form) {
+      form.addEventListener('submit', () => {
+        const sshSection = document.getElementById('ssh-fields');
+        const zivpnSection = document.getElementById('zivpn-fields');
+        const isSsh = sel.value === 'ssh';
+        if (sshSection) {
+          sshSection.querySelectorAll('input, select, textarea').forEach((el) => { el.disabled = !isSsh; });
+        }
+        if (zivpnSection) {
+          zivpnSection.querySelectorAll('input, select, textarea').forEach((el) => { el.disabled = isSsh; });
+        }
+      });
+    }
+  });
+</script>

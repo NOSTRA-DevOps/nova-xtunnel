@@ -1,0 +1,25 @@
+<div class="panel">
+  <div class="panel-head">
+    <h2><%= typeof activityTitle !== 'undefined' ? activityTitle : t('activity.title_default') %></h2>
+  </div>
+  <% if (activity.length === 0) { %>
+    <div class="empty-state"><%= t('activity.empty') %></div>
+  <% } else { %>
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th><%= t('activity.th.date') %></th><th><%= t('activity.th.author') %></th><th><%= t('activity.th.action') %></th></tr>
+    </thead>
+    <tbody>
+      <% activity.forEach(a => { %>
+      <tr>
+        <td class="mono" style="white-space:nowrap;"><%= a.created_at %></td>
+        <td class="mono"><%= a.actor_name %> <span class="quota-text">(<%= a.actor_type %>)</span></td>
+        <td><%= a.message %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+  </div>
+  <% } %>
+</div>

@@ -1,0 +1,41 @@
+<%- include('partials/head', { title: 'Connexion — NOVA X Tunnel' }) %>
+<div class="login-shell">
+  <div class="login-card">
+    <div class="brand">
+      <svg class="pulse-mark" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="15" cy="15" r="3" fill="#22D3EE"/>
+        <circle cx="15" cy="15" r="3" stroke="#7C5CFF" stroke-width="1.5" fill="none"/>
+        <circle cx="15" cy="15" r="3" stroke="#22D3EE" stroke-width="1.2" fill="none"/>
+      </svg>
+      NOVA X TUNNEL
+    </div>
+    <p class="login-sub"><%= t('login.subtitle') %></p>
+
+    <div style="text-align:center; margin: -10px 0 16px; font-size: 12.5px;">
+      <a href="/lang/fr" style="color: <%= lang === 'fr' ? 'var(--text)' : 'var(--muted)' %>; font-weight: <%= lang === 'fr' ? '700' : '500' %>;">FR</a>
+      <span style="color: var(--border);"> · </span>
+      <a href="/lang/en" style="color: <%= lang === 'en' ? 'var(--text)' : 'var(--muted)' %>; font-weight: <%= lang === 'en' ? '700' : '500' %>;">EN</a>
+    </div>
+
+    <% if (error) { %>
+      <div class="alert error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/login">
+      <label for="username"><%= t('login.username') %></label>
+      <input type="text" id="username" name="username" required autofocus autocomplete="username">
+
+      <label for="password"><%= t('login.password') %></label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+
+      <button class="btn" type="submit" style="width:100%;"><%= t('login.submit') %></button>
+    </form>
+
+    <div class="login-footer">
+      NOVA X Tunnel v<%= typeof version !== 'undefined' ? version : '2.0' %>
+      · <a href="/about" target="_blank" rel="noopener"><%= t('nav.about') %></a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

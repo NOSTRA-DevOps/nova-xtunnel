@@ -1,0 +1,9 @@
+# Web panel
+web-panel/node_modules/
+web-panel/db/*.sqlite3
+web-panel/db/*.sqlite3-*
+web-panel/.env
+
+# OS / editor cruft
+.DS_Store
+*.swp

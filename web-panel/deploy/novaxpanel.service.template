@@ -1,0 +1,16 @@
+[Unit]
+Description=NOVA X Tunnel Web Panel
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+EnvironmentFile=__PROJECT_DIR__/.env
+User=root
+
+[Install]
+WantedBy=multi-user.target

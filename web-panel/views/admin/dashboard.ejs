@@ -1,0 +1,141 @@
+<%- include('../partials/head', { title: 'Resellers — NOVA X Tunnel' }) %>
+<div class="shell">
+  <%- include('../partials/sidebar', { role: 'admin' }) %>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="page-title"><%= t('dash.admin.title') %></h1>
+        <p class="page-sub"><%= t('dash.admin.subtitle') %></p>
+      </div>
+      <div class="user-chip"><div class="avatar"><%= (username || '?').charAt(0).toUpperCase() %></div><span><%= t('common.connected_as') %> <b><%= username %></b></span></div>
+    </div>
+
+    <% if (error) { %><div class="alert error"><%= error %></div><% } %>
+    <% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label"><%= t('dash.admin.stat.resellers') %></div>
+        <div class="stat-value"><%= resellers.length %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('dash.admin.stat.active') %></div>
+        <div class="stat-value" style="color: var(--success);"><%= resellers.filter(r => r.status === 'active').length %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('dash.admin.stat.locked') %></div>
+        <div class="stat-value" style="color: var(--warning);"><%= resellers.filter(r => r.status !== 'active').length %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('dash.admin.stat.online_total') %></div>
+        <div class="stat-value accent"><%= resellers.reduce((a, r) => a + r.stats.onlineClientCount, 0) %> / <%= resellers.reduce((a, r) => a + r.max_users, 0) %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('dash.admin.stat.quota_total') %></div>
+        <div class="stat-value accent">
+          <%
+            const totalConsumed = resellers.reduce((a, r) => a + r.stats.consumedTotalGb, 0);
+            const hasUnlimited = resellers.some((r) => r.data_quota_gb == null);
+            const totalQuota = resellers.reduce((a, r) => a + (r.data_quota_gb || 0), 0);
+          %>
+          <%= fmtData(totalConsumed) %> / <%= hasUnlimited ? '∞' : fmtData(totalQuota) %>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2><%= t('dash.admin.all_resellers') %></h2></div>
+      <% if (resellers.length === 0) { %>
+        <div class="empty-state"><%= t('dash.admin.empty_resellers') %></div>
+      <% } else { %>
+      <div class="table-scroll">
+  <table>
+        <thead>
+          <tr>
+            <th><%= t('dash.admin.th.reseller') %></th>
+            <th><%= t('dash.admin.th.status') %></th>
+            <th><%= t('dash.admin.th.online') %></th>
+            <th><%= t('dash.admin.th.quota') %></th>
+            <th><%= t('dash.admin.th.locked_expired') %></th>
+            <th><%= t('dash.admin.th.expiry') %></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% resellers.forEach(r => { %>
+          <tr>
+            <td><a href="/admin/resellers/<%= r.id %>"><b><%= r.username %></b></a></td>
+            <td><span class="pill <%= r.status %>"><%= r.status === 'active' ? t('common.status.active') : (r.status === 'locked_manual' ? t('common.status.locked_manual') : t('common.status.locked_expired')) %></span></td>
+            <td class="mono"><%= r.stats.onlineClientCount %> / <%= r.max_users %></td>
+            <td class="mono">
+              <% if (r.data_quota_gb == null) { %><%= fmtData(r.stats.consumedTotalGb) %> / <%= t('common.unlimited') %><% } else { %>
+                <%= fmtData(r.stats.consumedTotalGb) %> / <%= fmtData(r.data_quota_gb) %>
+              <% } %>
+            </td>
+            <td class="mono"><%= r.stats.lockedClientCount %> / <%= r.stats.expiredClientCount %></td>
+            <td class="mono"><%= r.expiry_date || t('common.never') %></td>
+            <td><a href="/admin/resellers/<%= r.id %>" class="btn small subtle"><%= t('dash.admin.manage') %></a></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+  </div>
+      <% } %>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2><%= t('dash.admin.account_title') %></h2></div>
+      <form method="POST" action="/admin/change-password">
+        <label><%= t('common.new_password') %></label>
+        <input type="password" name="new_password" required minlength="6">
+        <button class="btn" type="submit"><%= t('common.change_password') %></button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2><%= t('dash.admin.create_reseller_title') %></h2></div>
+      <form method="POST" action="/admin/resellers">
+        <div class="grid-2">
+          <div>
+            <label><%= t('form.username') %></label>
+            <input type="text" name="username" required>
+          </div>
+          <div>
+            <label><%= t('form.password') %></label>
+            <input type="password" name="password" required>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div>
+            <label><%= t('form.max_users') %></label>
+            <input type="number" name="max_users" value="10" min="1" required>
+          </div>
+          <div>
+            <label><%= t('form.quota_total') %></label>
+            <input type="number" step="0.1" name="data_quota_gb" placeholder="<%= t('form.quota_placeholder') %>">
+          </div>
+          <div>
+            <label><%= t('common.expiry_date_empty_never') %></label>
+            <input type="date" name="expiry_date">
+          </div>
+        </div>
+
+        <label><%= t('form.allowed_protocols') %></label>
+        <div class="checkbox-row">
+          <% protocols.forEach(p => { %>
+            <label class="checkbox-pill"><input type="checkbox" name="protocols" value="<%= p.key %>"> <%= p.label %></label>
+          <% }) %>
+        </div>
+
+        <label><%= t('common.notes') %></label>
+        <textarea name="notes" rows="2"></textarea>
+
+        <button class="btn" type="submit"><%= t('dash.admin.create_reseller_submit') %></button>
+      </form>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<%- include('../partials/head', { title: 'Mes clients — NOVA X Tunnel' }) %>
+<div class="shell">
+  <%- include('../partials/sidebar', { role: 'reseller' }) %>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 class="page-title"><%= t('nav.my_clients') %></h1>
+        <p class="page-sub">
+          <span class="pill <%= reseller.status %>">
+            <%= reseller.status === 'active' ? t('common.account_active') : (reseller.status === 'locked_manual' ? t('common.account_locked') : t('common.account_expired')) %>
+          </span>
+        </p>
+      </div>
+      <div class="user-chip"><div class="avatar"><%= (username || '?').charAt(0).toUpperCase() %></div><span><%= t('common.connected_as') %> <b><%= username %></b></span></div>
+    </div>
+
+    <% if (error) { %><div class="alert error"><%= error %></div><% } %>
+    <% if (success) { %><div class="alert success"><%= success %></div><% } %>
+
+    <% if (reseller.status !== 'active') { %>
+      <div class="alert error">
+        <%= t('reseller_dash.locked_msg') %><%= reseller.status === 'locked_expired' ? t('reseller_dash.locked_msg_expired') : '' %><%= t('reseller_dash.locked_msg_suffix') %>
+      </div>
+    <% } %>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label"><%= t('reseller_dash.stat.online_users') %></div>
+        <div class="stat-value"><%= stats.onlineClientCount %> / <%= reseller.max_users %></div>
+        <div class="quota-text"><span class="quota-text-label">Connexions allouées:</span> <span class="quota-text-value"><%= stats.allocatedConnections %> / <%= reseller.max_users %></span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('reseller_dash.stat.quota_consumed') %></div>
+        <div class="stat-value">
+          <%= fmtData(stats.consumedTotalGb) %> / <%= reseller.data_quota_gb == null ? '∞' : fmtData(reseller.data_quota_gb) %>
+        </div>
+        <% if (reseller.data_quota_gb != null) { %>
+          <div class="quota-bar-track" style="margin-top:10px;">
+            <div class="quota-bar-fill" style="width: <%= Math.min(100, (stats.consumedTotalGb / reseller.data_quota_gb) * 100) %>%;"></div>
+          </div>
+        <% } %>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('reseller_dash.stat.locked_clients') %></div>
+        <div class="stat-value" style="color: var(--warning);"><%= stats.lockedClientCount %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('reseller_dash.stat.expired_clients') %></div>
+        <div class="stat-value" style="color: var(--warning);"><%= stats.expiredClientCount %></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label"><%= t('reseller_dash.stat.account_expiry') %></div>
+        <div class="stat-value mono" style="font-size:18px;"><%= reseller.expiry_date || t('common.never') %></div>
+      </div>
+    </div>
+
+    <%- include('../partials/client_manager', {
+      createAction: '/reseller/clients',
+      clientBase: '/reseller/clients',
+      clients,
+      allowedProtocols
+    }) %>
+
+    <%- include('../partials/deleted_clients', { deletedClients }) %>
+
+    <div class="panel">
+      <div class="panel-head"><h2><%= t('reseller_dash.account_title') %></h2></div>
+      <form method="POST" action="/reseller/change-password">
+        <label><%= t('common.new_password') %></label>
+        <input type="password" name="new_password" required minlength="6">
+        <button class="btn" type="submit"><%= t('common.change_password') %></button>
+      </form>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
