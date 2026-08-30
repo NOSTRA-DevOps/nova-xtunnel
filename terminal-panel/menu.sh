@@ -2052,10 +2052,10 @@ install_udp_custom() {
     arch=$(uname -m)
     local binary_url=""
     if [[ "$arch" == "x86_64" ]]; then
-        binary_url="https://github.com/NOVA-X-Code/nova-xtunnel/raw/main/udp/udp-custom-linux-amd64"
+        binary_url="https://github.com/NOSTRA-DevOps/nova-xtunnel/raw/main/udp/udp-custom-linux-amd64"
         echo -e "${C_BLUE}ℹ️ Detected x86_64 (amd64) architecture.${C_RESET}"
     elif [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
-        binary_url="https://github.com/NOVA-X-Code/nova-xtunnel/raw/main/udp/udp-custom-linux-arm"
+        binary_url="https://github.com/NOSTRA-DevOps/nova-xtunnel/raw/main/udp/udp-custom-linux-arm"
         echo -e "${C_BLUE}ℹ️ Detected ARM64 architecture.${C_RESET}"
     else
         echo -e "\n${C_RED}❌ Unsupported architecture: $arch. Cannot install udp-custom.${C_RESET}"

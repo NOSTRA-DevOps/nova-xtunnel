@@ -6,7 +6,7 @@
 set -e
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Erreur : cette commande doit être exécutée en root (sudo novaxpanel)."
+  echo "Error: This script must be run as root."
   exit 1
 fi
 
@@ -14,7 +14,7 @@ PROJECT_DIR="__PROJECT_DIR__"
 ENV_FILE="$PROJECT_DIR/.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Erreur : $ENV_FILE introuvable. Le panel a-t-il bien été installé avec deploy/install.sh ?"
+  echo "Error: $ENV_FILE not found. Has the panel been installed with deploy/install.sh ?"
   exit 1
 fi
 
@@ -38,23 +38,22 @@ restart_panel() { systemctl restart novaxpanel && echo "✅ Service novaxpanel r
 cmd_status() {
   local tls_mode; tls_mode=$(env_get TLS_MODE)
   echo "=================================================="
-  echo " NOVA X Tunnel — Statut du panel web"
+  echo " NOVA X Tunnel — Status of the web panel"
   echo "=================================================="
-  echo " Domaine        : $(env_get DOMAIN)"
-  echo " Mode TLS       : $([[ "$tls_mode" == "node" ]] && echo "Node direct (pas de Nginx)" || echo "Nginx reverse proxy")"
-  echo " Port public    : $(env_get PUBLIC_PORT)"
-  [[ "$tls_mode" != "node" ]] && echo " Port interne   : $(env_get PORT)"
+  echo " Domain         : $(env_get DOMAIN)"
+  echo " TLS Mode       : $([[ "$tls_mode" == "node" ]] && echo "Direct Node (no Nginx)" || echo "Nginx reverse proxy")"
+  echo " PPublic Port    : $(env_get PUBLIC_PORT)"
+  [[ "$tls_mode" != "node" ]] && echo " Internal Port  : $(env_get PORT)"
   echo " URL            : https://$(env_get DOMAIN):$(env_get PUBLIC_PORT)"
   echo
-  systemctl is-active --quiet novaxpanel && echo " Service Node   : ✅ actif" || echo " Service Node   : ❌ arrêté"
+  systemctl is-active --quiet novaxpanel && echo " Service Node   : ✅ actif" || echo " Service Node   : ❌ stopped"
   if [[ "$tls_mode" != "node" ]]; then
-    systemctl is-active --quiet nginx && echo " Nginx          : ✅ actif" || echo " Nginx          : ❌ arrêté"
+    systemctl is-active --quiet nginx && echo " Nginx          : ✅ actif" || echo " Nginx          : ❌ stopped"
   fi
   echo "=================================================="
-}
 
 cmd_logs() {
-  echo "Ctrl+C pour quitter les logs."
+  echo "Ctrl+C pour quitter les logs en direct."
   journalctl -u novaxpanel -f --no-pager -n 100
 }
 
@@ -66,8 +65,8 @@ cmd_update() {
     echo "📥 git pull..."
     git pull
   else
-    echo "⚠️  Ce répertoire n'est pas un dépôt git — remplacez les fichiers manuellement"
-    echo "   (ou re-clonez le dépôt) puis relancez 'novaxpanel update'."
+    echo "⚠️  This directory is not a git repository — replace the files manually"
+    echo "   (or re-clone the repository) then run 'novaxpanel update' again."
   fi
   echo "📦 npm install..."
   cd web-panel 2>/dev/null || cd "$PROJECT_DIR"
@@ -79,11 +78,11 @@ cmd_change_domain() {
   local old_domain new_domain tls_mode
   old_domain=$(env_get DOMAIN)
   tls_mode=$(env_get TLS_MODE)
-  echo "Domaine actuel : $old_domain"
-  read -r -p "👉 Nouveau nom de domaine: " new_domain
-  [[ -z "$new_domain" ]] && { echo "Annulé."; return; }
+  echo "Current domain : $old_domain"
+  read -r -p "👉 New domain name: " new_domain
+  [[ -z "$new_domain" ]] && { echo "Cancelled."; return; }
 
-  obtain_certificate_interactive "$new_domain" || { echo "❌ Échec, domaine non changé."; return 1; }
+  obtain_certificate_interactive "$new_domain" || { echo "❌ Failed, domain not changed."; return 1; }
 
   if [[ "$tls_mode" == "node" ]]; then
     env_set CERT_PATH "/etc/letsencrypt/live/$new_domain/fullchain.pem"
@@ -100,8 +99,8 @@ cmd_change_domain() {
 
   env_set DOMAIN "$new_domain"
   restart_panel
-  echo "✅ Domaine changé : $old_domain -> $new_domain"
-  echo "   Nouvelle URL: https://$new_domain:$(env_get PUBLIC_PORT)"
+  echo "✅ Domain changed : $old_domain -> $new_domain"
+  echo "   New URL: https://$new_domain:$(env_get PUBLIC_PORT)"
 }
 
 cmd_change_port() {
@@ -110,35 +109,35 @@ cmd_change_port() {
   if [[ "$tls_mode" == "node" ]]; then
     local current new
     current=$(env_get PUBLIC_PORT)
-    echo "Port public actuel (Node en direct) : $current"
-    read -r -p "👉 Nouveau port public: " new
+    echo "Current public port (Direct Node) : $current"
+    read -r -p "👉 New public port: " new
     new="${new:-$current}"
     if ! [[ "$new" =~ ^[0-9]+$ ]] || (( new < 1 || new > 65535 )); then
-      echo "❌ Port invalide: $new"; return 1
+      echo "❌ Invalid port: $new"; return 1
     fi
     env_set PUBLIC_PORT "$new"
     env_set PORT "$new"
     restart_panel
-    echo "✅ Port mis à jour. Nouvelle URL: https://$(env_get DOMAIN):$new"
+    echo "✅ Port updated. New URL: https://$(env_get DOMAIN):$new"
     return
   fi
 
   local current_public current_app new_public new_app
   current_public=$(env_get PUBLIC_PORT); current_app=$(env_get PORT)
-  echo "Port public actuel  : $current_public"
-  echo "Port interne actuel : $current_app"
-  read -r -p "👉 Nouveau port public (vide = inchangé): " new_public
-  read -r -p "👉 Nouveau port interne (vide = inchangé): " new_app
+  echo "Current public port  : $current_public"
+  echo "Current internal port : $current_app"
+  read -r -p "👉 New public port (empty = unchanged): " new_public
+  read -r -p "👉 New internal port (empty = unchanged): " new_app
   new_public="${new_public:-$current_public}"
   new_app="${new_app:-$current_app}"
 
   for p in "$new_public" "$new_app"; do
     if ! [[ "$p" =~ ^[0-9]+$ ]] || (( p < 1 || p > 65535 )); then
-      echo "❌ Port invalide: $p"; return 1
+      echo "❌ Invalid port: $p"; return 1
     fi
   done
   if [[ "$new_public" == "$new_app" ]]; then
-    echo "❌ Le port public et le port interne doivent être différents."; return 1
+    echo "❌ The public port and the internal port must be different."; return 1
   fi
 
   local domain; domain=$(env_get DOMAIN)
@@ -151,39 +150,39 @@ cmd_change_port() {
   env_set PUBLIC_PORT "$new_public"
   env_set PORT "$new_app"
   restart_panel
-  echo "✅ Ports mis à jour. Nouvelle URL: https://$domain:$new_public"
+  echo "✅ Ports updated. New URL: https://$domain:$new_public"
 }
 
 cmd_change_admin_username() {
-  echo "Comptes admin existants :"
+  echo "Existing admin accounts :"
   node "$PROJECT_DIR/deploy/admin-tool.js" list
-  read -r -p "👉 Nom d'utilisateur à renommer: " old_user
-  read -r -p "👉 Nouveau nom d'utilisateur: " new_user
-  [[ -z "$old_user" || -z "$new_user" ]] && { echo "Annulé."; return; }
+  read -r -p "👉 Username to rename: " old_user
+  read -r -p "👉 New username: " new_user
+  [[ -z "$old_user" || -z "$new_user" ]] && { echo "Cancelled."; return; }
   node "$PROJECT_DIR/deploy/admin-tool.js" set-username "$old_user" "$new_user"
 }
 
 cmd_change_admin_password() {
-  echo "Comptes admin existants :"
+  echo "Existing admin accounts :"
   node "$PROJECT_DIR/deploy/admin-tool.js" list
-  read -r -p "👉 Nom d'utilisateur dont changer le mot de passe: " user
-  [[ -z "$user" ]] && { echo "Annulé."; return; }
-  read -r -s -p "👉 Nouveau mot de passe (vide = généré automatiquement): " pass; echo
+  read -r -p "👉 Username of the account to change the password for: " user
+  [[ -z "$user" ]] && { echo "Cancelled."; return; }
+  read -r -s -p "👉 New password (empty = automatically generated): " pass; echo
   if [[ -z "$pass" ]]; then
     pass=$(openssl rand -base64 14 | tr -d '=+/')
-    echo "🔑 Mot de passe généré: $pass"
+    echo "🔑 New password generated: $pass"
   fi
   node "$PROJECT_DIR/deploy/admin-tool.js" set-password "$user" "$pass"
 }
 
 cmd_regen_secret() {
-  echo "⚠️  Régénérer la clé secrète déconnectera immédiatement tous les utilisateurs connectés."
-  read -r -p "Continuer ? (o/N) " c
-  [[ "$c" =~ ^[oOyY] ]] || { echo "Annulé."; return; }
+  echo "⚠️  Regenerating the session secret will invalidate all existing sessions, logging out all users."
+  read -r -p "Continue ? (y/N) " c
+  [[ "$c" =~ ^[yY] ]] || { echo "Cancelled."; return; }
   local secret; secret=$(openssl rand -hex 32)
   env_set SESSION_SECRET "$secret"
   restart_panel
-  echo "✅ Nouvelle clé secrète générée et appliquée."
+  echo "✅ New session secret generated and applied."
 }
 
 cmd_backup() {
@@ -192,23 +191,23 @@ cmd_backup() {
   local file="$dir/novaxpanel-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
   tar -czf "$file" -C "$PROJECT_DIR" .env db/panel.sqlite3 2>/dev/null || \
   tar -czf "$file" -C "$PROJECT_DIR" .env
-  echo "✅ Sauvegarde créée: $file"
+  echo "✅ Backup created: $file"
 }
 
 cmd_restore() {
   local dir="/root/novaxpanel-backups"
   if [[ ! -d "$dir" ]] || [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]; then
-    echo "Aucune sauvegarde trouvée dans $dir."; return 1
+    echo "No backup found in $dir."; return 1
   fi
-  echo "Sauvegardes disponibles :"
-  select f in "$dir"/*.tar.gz "Annuler"; do
-    [[ "$f" == "Annuler" || -z "$f" ]] && return
-    echo "⚠️  Ceci va écraser la config (.env) et la base actuelles."
-    read -r -p "Continuer ? (o/N) " c
-    [[ "$c" =~ ^[oOyY] ]] || return
+  echo "Available backups:"
+  select f in "$dir"/*.tar.gz "Cancel"; do
+    [[ "$f" == "Cancel" || -z "$f" ]] && return
+    echo "⚠️  This will overwrite the current config (.env) and database."
+    read -r -p "Continue ? (y/N) " c
+    [[ "$c" =~ ^[yY] ]] || return
     tar -xzf "$f" -C "$PROJECT_DIR"
     restart_panel
-    echo "✅ Restauration terminée depuis $f"
+    echo "✅ Restoration completed from $f"
     return
   done
 }
@@ -217,11 +216,11 @@ cmd_tls_mode() {
   local current; current=$(env_get TLS_MODE)
   local domain; domain=$(env_get DOMAIN)
   local public_port; public_port=$(env_get PUBLIC_PORT)
-  echo "Mode TLS actuel : $([[ "$current" == "node" ]] && echo "Node direct" || echo "Nginx reverse proxy")"
+  echo "Current TLS mode : $([[ "$current" == "node" ]] && echo "Node direct" || echo "Nginx reverse proxy")"
   echo "  1) Nginx reverse proxy"
-  echo "  2) Node direct — certificat Let's Encrypt (auto, gère aussi Cloudflare DNS-01)"
-  echo "  3) Node direct — certificat personnalisé (ex: Cloudflare Origin Certificate)"
-  read -r -p "Choix [1/2/3]: " choice
+  echo "  2) Node direct — certificat Let's Encrypt (auto, manage Cloudflare DNS-01)"
+  echo "  3) Node direct — custom certificate  (ex: Cloudflare Origin Certificate)"
+  read -r -p "Choice [1/2/3]: " choice
 
   if [[ "$choice" == "2" && "$current" != "node" ]]; then
     obtain_certificate_interactive "$domain" || { echo "❌ Échec, mode inchangé."; return 1; }
@@ -235,16 +234,16 @@ cmd_tls_mode() {
     env_set KEY_PATH "/etc/letsencrypt/live/$domain/privkey.pem"
     env_set PORT "$public_port"
     restart_panel
-    echo "✅ Le panel gère maintenant directement le certificat (plus de Nginx)."
+    echo "✅ The panel now manages the certificate directly (no more Nginx)."
 
   elif [[ "$choice" == "3" ]]; then
-    echo "☁️  Certificat personnalisé (ex: Cloudflare Origin Certificate)."
-    echo "   Générez-le dans le tableau de bord Cloudflare : SSL/TLS > Certificats d'origine > Créer un certificat,"
-    echo "   puis pensez à passer le mode SSL/TLS Cloudflare du domaine sur 'Full (strict)'."
-    read -r -p "👉 Chemin du certificat (fullchain/cert .pem): " custom_cert
-    read -r -p "👉 Chemin de la clé privée (.pem/.key): " custom_key
+    echo "☁️  Custom certificate (e.g., Cloudflare Origin Certificate)."
+    echo "   Generate it in the Cloudflare dashboard: SSL/TLS > Origin Certificates > Create a Certificate,"
+    echo "   then remember to set the Cloudflare SSL/TLS mode for the domain to 'Full (strict)'."
+    read -r -p "👉 Path to the certificate (fullchain/cert .pem): " custom_cert
+    read -r -p "👉 Path to the private key (.pem/.key): " custom_key
     if [[ ! -f "$custom_cert" || ! -f "$custom_key" ]]; then
-      echo "❌ Fichier introuvable. Copiez d'abord le certificat et la clé sur ce serveur, puis réessayez."
+      echo "❌ File not found. Please copy the certificate and key to this server first, then try again."
       return 1
     fi
     if [[ -f /etc/nginx/sites-enabled/novaxpanel ]]; then
@@ -257,11 +256,11 @@ cmd_tls_mode() {
     env_set KEY_PATH "$custom_key"
     env_set PORT "$public_port"
     restart_panel
-    echo "✅ Le panel utilise maintenant votre certificat personnalisé (plus de Nginx)."
+    echo "✅ The panel now uses your custom certificate (no more Nginx)."
 
   elif [[ "$choice" == "1" && "$current" != "nginx" ]]; then
     if ! command -v nginx >/dev/null 2>&1; then
-      echo "📦 Installation de Nginx..."
+      echo "📦 Installation of Nginx..."
       apt-get update -y && apt-get install -y nginx
     fi
     read -r -p "👉 Port interne pour l'application Node [3000]: " app_port
@@ -276,21 +275,21 @@ cmd_tls_mode() {
     env_set BEHIND_TLS_PROXY true
     env_set PORT "$app_port"
     restart_panel
-    echo "✅ Nginx gère maintenant le TLS en reverse proxy."
+    echo "✅ Nginx now manages the TLS in reverse proxy mode."
   else
-    echo "Aucun changement."
+    echo "No changes made."
   fi
 }
 
 cmd_uninstall() {
   echo "=================================================="
-  echo " ⚠️  Désinstallation du panel web NOVA X Tunnel"
+  echo " ⚠️  Uninstalling the NOVA X Tunnel web panel"
   echo "=================================================="
-  echo " Ceci va : arrêter/désactiver le service, retirer la config Nginx et le"
-  echo " certificat TLS associés, et retirer la commande 'novaxpanel'."
-  echo " (Le panel terminal 'menu' et vos comptes SSH/ZiVPN NE SONT PAS touchés.)"
-  read -r -p "Confirmer la désinstallation ? (tapez 'oui'): " c
-  [[ "$c" == "oui" ]] || { echo "Annulé."; return; }
+  echo " This will: stop/disable the service, remove the Nginx config and the"
+  echo " associated TLS certificate, and remove the 'novaxpanel' command."
+  echo " (The terminal 'menu' panel and your SSH/ZiVPN accounts will NOT be affected.)"
+  read -r -p "Confirm the uninstallation? (type 'oui'): " c
+  [[ "$c" == "oui" ]] || { echo "Cancelled."; return; }
 
   local domain; domain=$(env_get DOMAIN)
   local tls_mode; tls_mode=$(env_get TLS_MODE)
@@ -309,47 +308,47 @@ cmd_uninstall() {
   rm -f /etc/letsencrypt/renewal-hooks/post/novaxpanel-start-haproxy.sh
   rm -f /etc/letsencrypt/renewal-hooks/post/novaxpanel-restart-panel.sh
 
-  read -r -p "Supprimer aussi le certificat TLS pour $domain ? (o/N) " c2
-  if [[ "$c2" =~ ^[oOyY] ]]; then
+  read -r -p "Delete the TLS certificate for $domain as well? (y/N) " c2
+  if [[ "$c2" =~ ^[yY] ]]; then
     certbot delete --cert-name "$domain" --non-interactive 2>/dev/null || true
   fi
 
-  read -r -p "Supprimer aussi les données (base SQLite, .env, node_modules) ? (o/N) " c3
-  if [[ "$c3" =~ ^[oOyY] ]]; then
+  read -r -p "Delete the data (SQLite database, .env, node_modules) as well? (y/N) " c3
+  if [[ "$c3" =~ ^[yY] ]]; then
     rm -rf "$PROJECT_DIR/node_modules" "$PROJECT_DIR/.env" "$PROJECT_DIR/db/panel.sqlite3"
-    echo "🗑️  Données supprimées."
+    echo "🗑️  Data deleted."
   else
-    echo "ℹ️  Données conservées dans $PROJECT_DIR (utile pour une réinstallation)."
+    echo "ℹ️  Data preserved in $PROJECT_DIR (useful for a reinstallation)."
   fi
 
-  echo "✅ Panel web désinstallé."
+  echo "✅ Panel web uninstalled."
   rm -f /usr/local/bin/novaxpanel
-  echo "   (Commande 'novaxpanel' retirée.)"
+  echo "   (Command 'novaxpanel' removed.)"
 }
 
 show_menu() {
   cat <<'EOF'
 
 ==================================================
-   NOVA X TUNNEL — Panel de maintenance (web panel)
+   NOVA X TUNNEL — Maintenance panel (web panel)
 ==================================================
-  1) Statut
-  2) Voir les logs en direct
-  3) Redémarrer le service
-  4) Mettre à jour
-  5) Changer le nom de domaine
-  6) Changer les ports (public / interne)
-  7) Basculer Nginx <-> Node direct (mode TLS)
-  8) Changer le nom d'utilisateur admin
-  9) Changer le mot de passe admin
- 10) Régénérer la clé secrète de session
- 11) Sauvegarder
- 12) Restaurer une sauvegarde
- 13) Désinstaller le panel web
-  0) Quitter
+  1) Status
+  2) View live logs
+  3) Restart the service
+  4) Update
+  5) Change domain name
+  6) Change ports (public / internal)
+  7) Switch Nginx <-> Node direct (TLS mode)
+  8) Change admin username
+  9) Change admin password
+ 10) Regenerate session secret
+ 11) Backup
+ 12) Restore backup
+ 13) Uninstall web panel
+  0) Quit
 ==================================================
 EOF
-  read -r -p "Choix: " choice
+  read -r -p "Choice: " choice
   case "$choice" in
     1) cmd_status ;;
     2) cmd_logs ;;
@@ -365,7 +364,7 @@ EOF
     12) cmd_restore ;;
     13) cmd_uninstall; exit 0 ;;
     0) exit 0 ;;
-    *) echo "Choix invalide." ;;
+    *) echo "Invalid choice." ;;
   esac
 }
 
@@ -386,10 +385,10 @@ case "$1" in
   restore) cmd_restore ;;
   uninstall) cmd_uninstall ;;
   "")
-    while true; do show_menu; read -r -p "Appuyez sur Entrée pour continuer..." _; done
+    while true; do show_menu; read -r -p "Press Enter to continue..." _; done
     ;;
   *)
-    echo "Commande inconnue: $1"
+    echo "Unknown command: $1"
     echo "Usage: novaxpanel [status|logs|restart|update|domain|port|tls-mode|admin-user|admin-pass|secret|backup|restore|uninstall]"
     exit 1
     ;;

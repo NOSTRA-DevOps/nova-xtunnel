@@ -3,11 +3,11 @@
 #
 # Installation (première fois) OU mise à jour (fois suivantes) — même commande :
 #
-#   curl -fsSL https://raw.githubusercontent.com/NOVA-X-Code/nova-xtunnel/main/bootstrap.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/NOSTRA-DevOps/nova-xtunnel/main/bootstrap.sh | sudo bash
 #
 set -e
 
-REPO_URL="https://github.com/NOVA-X-Code/nova-xtunnel.git"
+REPO_URL="https://github.com/NOSTRA-DevOps/nova-xtunnel.git"
 INSTALL_DIR="/opt/nova-x-tunnel"
 
 if [[ $EUID -ne 0 ]]; then
