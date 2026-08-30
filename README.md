@@ -125,7 +125,9 @@ The two panels maintain consistency through shared data files:
 ```text
 Data Type	Shared File Location
 SSH Accounts	/etc/novaxtunnel/users.db
+
 SSH Bandwidth Usage	/etc/novaxtunnel/bandwidth/<user>.usage
+
 ZiVPN Credentials & Quotas	/etc/zivpn/config.json
 /etc/zivpn/passwords_meta.json
 ```
@@ -176,14 +178,37 @@ systemctl restart novaxpanel
 
 # 🌍 Community & Support
 
+<p align="center">
 
-| :--- |
-| [![💬Official WhatsApp Channel](https://shields.io)](https://whatsapp.com/channel/0029Vb6yLAG9WtC0zbXeEo2t) |
-| [![📱WhatsApp Channel 2 ](https://shields.io)](https://whatsapp.com/channel/0029Vb8ZJnsAYlUHo1uA6W0y) |
-| [![✈️Telegram Channel & Support (Addlist)](https://shields.io)](https://t.me/addlist/CpQzYQfWwwxmYTk0) |
-| [![FACEBOOK Channel](https://shields.io)](https://www.facebook.com/profile.php?id=61591828051151) |
-|[![🎮Discord Server](https://shields.io)](https://discord.gg/xGAGs69UHj) |
-| [![🎥YouTube Channel](https://shields.io)](https://www.youtube.com/@LaboKingFreeSurf) |
+<a href="https://whatsapp.com/channel/0029Vb6yLAG9WtC0zbXeEo2t">
+  <img src="https://img.shields.io/badge/💬%20Official%20WhatsApp%20Channel-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" />
+</a>
+
+<a href="https://whatsapp.com/channel/0029Vb8ZJnsAYlUHo1uA6W0y">
+  <img src="https://img.shields.io/badge/📱%20WhatsApp%20Channel%202-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" />
+</a>
+
+<br>
+
+<a href="https://t.me/addlist/CpQzYQfWwwxmYTk0">
+  <img src="https://img.shields.io/badge/✈️%20Telegram%20Channel%20%26%20Support-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" />
+</a>
+
+<a href="https://www.facebook.com/profile.php?id=61591828051151">
+  <img src="https://img.shields.io/badge/📘%20Facebook-1877F2?style=for-the-badge&logo=facebook&logoColor=white" />
+</a>
+
+<br>
+
+<a href="https://discord.gg/xGAGs69UHj">
+  <img src="https://img.shields.io/badge/🎮%20Discord%20Server-5865F2?style=for-the-badge&logo=discord&logoColor=white" />
+</a>
+
+<a href="https://www.youtube.com/@LaboKingFreeSurf">
+  <img src="https://img.shields.io/badge/🎥%20YouTube%20Channel-FF0000?style=for-the-badge&logo=youtube&logoColor=white" />
+</a>
+
+</p>
 
 
 ---
