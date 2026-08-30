@@ -1,7 +1,7 @@
 <!-- NOVA X Tunnel Banner -->
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/license-All%20Rights%20Reserved-red.svg" alt="License">
+  <img src="https://img.shields.io/badge/license-MIT-red.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0+-4EAA25.svg" alt="Bash">
   <img src="https://img.shields.io/badge/node.js-16.x+-339933.svg" alt="Node.js">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
@@ -21,11 +21,13 @@ Supported Protocols
 
     SSH WebSocket/UDP/TLS
 
-    SlowDNS
+    SSH + V2ray SlowDNS
 
     ZiVPN
 
     HAProxy load balancing
+    
+    3x-ui parallel installation 
 
 🏗️ Main Architecture
 ```text
@@ -52,7 +54,6 @@ One-Command Install
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NOSTRA-DevOps/nova-xtunnel/main/bootstrap.sh | sudo bash
 ```
-    Important: Update REPO_URL in bootstrap.sh with your actual repository URL before pushing to GitHub.
 
 The bootstrap script intelligently detects installed components:
 
