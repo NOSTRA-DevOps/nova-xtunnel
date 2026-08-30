@@ -176,17 +176,14 @@ systemctl restart novaxpanel
 
 # 🌍 Community & Support
 
-| Plateforme | Description / Nom du Salon | Badge de Lien |
-| :--- | :--- | :--- |
-| 💬 **WhatsApp** | Official WhatsApp Channel | [![WhatsApp](https://shields.io)](https://whatsapp.com/channel/0029Vb6yLAG9WtC0zbXeEo2t) |
-| 📱 **WhatsApp** | WhatsApp Channel 2 | [![WhatsApp](https://shields.io)](https://whatsapp.com/channel/0029Vb8ZJnsAYlUHo1uA6W0y) |
-| 🟢 **WhatsApp** | Community Group | [![WhatsApp](https://shields.io)](https://chat.whatsapp.com/LUkXjJNfWrT8Fz7akxosH0
-) |
-| ✈️ **Telegram** | Telegram Channel & Support(Addlist) | [![Telegram](https://shields.io)](https://t.me/addlist/CpQzYQfWwwxmYTk0) |
-| 📺 **Facebook** | FACEBOOK Channel | [![Facebook](https://shields.io)](https://www.facebook.com/profile.php?id=61591828051151) |
-| 🎮 **Discord** | Discord Server | [![Discord](https://shields.io)](https://discord.gg/xGAGs69UHj) |
-| 🎥 **YouTube** | YouTube Channel | [![YouTube](https://shields.io)](https://www.youtube.com/@LaboKingFreeSurf) |
 
+| :--- |
+| [![💬Official WhatsApp Channel](https://shields.io)](https://whatsapp.com/channel/0029Vb6yLAG9WtC0zbXeEo2t) |
+| [![📱WhatsApp Channel 2 ](https://shields.io)](https://whatsapp.com/channel/0029Vb8ZJnsAYlUHo1uA6W0y) |
+| [![✈️Telegram Channel & Support (Addlist)](https://shields.io)](https://t.me/addlist/CpQzYQfWwwxmYTk0) |
+| [![FACEBOOK Channel](https://shields.io)](https://www.facebook.com/profile.php?id=61591828051151) |
+|[![🎮Discord Server](https://shields.io)](https://discord.gg/xGAGs69UHj) |
+| [![🎥YouTube Channel](https://shields.io)](https://www.youtube.com/@LaboKingFreeSurf) |
 
 
 ---
