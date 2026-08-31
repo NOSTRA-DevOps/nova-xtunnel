@@ -148,12 +148,28 @@
               </div>
             <% }) %>
           </div>
-          <pre id="copy-<%= c.id %>" style="display:none;">NOVA X TUNNEL — <%= c.type === 'ssh' ? t('form.username') : t('common.password') %>: <%= c.identifier %>
-<% if (c.type === 'ssh' && c.password) { %><%= t('common.password') %>: <%= c.password %>
-<% } %><% (c.connectionInfo || []).forEach(section => { %>
-<%= section.title %>:
-<% section.lines.forEach(line => { %>  <%= line %>
-<% }) %><% }) %></pre>
+          <pre id="copy-<%= c.id %>" style="display:none;">
+╔═════════════════════════════════╗
+     🌐  𝗡𝗢𝗩𝗔 𝗫𝗧𝗨𝗡𝗡𝗘𝗟  🌐
+╚═════════════════════════════════╝
+
+👤 <%= c.type === 'ssh' ? t('form.username') : t('common.password') %> : `<%= c.identifier %>`
+<% if (c.type === 'ssh' && c.password) { -%>
+🔑 <%= t('common.password') %> : `<%= c.password %>`
+<% } -%>
+<% (c.connectionInfo || []).forEach(section => { -%>
+
+⚙️ 𝗠𝗼𝗱𝗲 : <%= section.title %>
+──────────────────────────────────
+<% section.lines.forEach(line => { -%>
+👉 `<%= line %>`
+<% }) -%>
+<% }) -%>
+
+⚡ 𝘚𝘵𝘢𝘵𝘶𝘴: 𝘈𝘤𝘵𝘪𝘧 |@Labokingfreesurf
+──────────────────────────────────
+</pre>
+
         </td>
       </tr>
       <tr id="edit-<%= c.id %>" class="hidden-edit">
@@ -219,14 +235,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     const sel = document.getElementById('client-type-select');
     if (sel) toggleClientFields();
-    // Only submit the fields that belong to the currently-selected account type. Both
-    // sections share some field names (password, protocols) so that the same server-side
-    // field works for either type - but that also means BOTH inputs get sent together if
-    // we don't disable the hidden one: browsers/Express only skip <input disabled>, not
-    // CSS-hidden ones. Without this, submitting e.g. the SSH form also sends the empty
-    // ZiVPN password field under the same "password" key, which Express turns into an
-    // array (['Merli2341', '']) - and stringifying an array joins it with a comma,
-    // silently appending "," to the password that was actually typed.
+    
     const form = sel ? sel.closest('form') : null;
     if (form) {
       form.addEventListener('submit', () => {

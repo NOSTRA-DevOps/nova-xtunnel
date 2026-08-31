@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOVA X Tunnel - Web Panel deployment script
+# NOVA XTUNNEL - Web Panel deployment script
 #
 # Fully interactive: asks for the domain, the TLS mode, admin username/password,
 # ports and a session secret key. Every value can also be passed as a flag for
@@ -58,7 +58,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "=================================================="
-echo " NOVA X Tunnel —  Web panel Installation"
+echo " NOVA XTUNNEL —  Web panel Installation"
 echo "=================================================="
 echo
 

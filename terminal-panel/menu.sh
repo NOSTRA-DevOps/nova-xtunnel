@@ -390,13 +390,13 @@ delete_novaxtunnel_user_accounts() {
 
 require_interactive_terminal() {
     if [[ ! -t 0 || ! -t 1 ]]; then
-        echo -e "${C_RED}❌ Error: The NOVA X Tunnel menu must be run from an interactive terminal.${C_RESET}"
+        echo -e "${C_RED}❌ Error: The NOVA XTUNNEL menu must be run from an interactive terminal.${C_RESET}"
         exit 1
     fi
 }
 
 initial_setup() {
-    echo -e "${C_BLUE}⚙️ Initializing NOVA X Tunnel setup...${C_RESET}"
+    echo -e "${C_BLUE}⚙️ Initializing NOVA XTUNNEL setup...${C_RESET}"
     check_environment
     
     ensure_novaxtunnel_dirs
@@ -602,7 +602,7 @@ setup_limiter_service() {
     # Combined limiter + bandwidth monitoring
     cat > "$LIMITER_SCRIPT" << 'EOF'
 #!/bin/bash
-# NOVA X Tunnel limiter version 2026-08-10.1
+# NOVA XTUNNEL limiter version 2026-08-10.1
 DB_FILE="/etc/novaxtunnel/users.db"
 BW_DIR="/etc/novaxtunnel/bandwidth"
 PID_DIR="$BW_DIR/pidtrack"
@@ -873,7 +873,7 @@ EOF
 
     cat > "$LIMITER_SERVICE" << EOF
 [Unit]
-Description=NOVA X Tunnel Active User Limiter
+Description=NOVA XTUNNEL Active User Limiter
 After=network.target
 
 [Service]
@@ -904,7 +904,7 @@ EOF
 }
 
 sync_runtime_components_if_needed() {
-    local limiter_marker="# NOVA X Tunnel limiter version 2026-04-05.1"
+    local limiter_marker="# NOVA XTUNNEL limiter version 2026-04-05.1"
     cleanup_legacy_bandwidth_runtime
     ensure_ssh_client_alive_config
     if [[ ! -f "$LIMITER_SCRIPT" ]] || ! grep -Fqx "$limiter_marker" "$LIMITER_SCRIPT" 2>/dev/null; then
@@ -934,7 +934,7 @@ ensure_ssh_client_alive_config() {
     if [[ ! -f "$SSHD_FF_KEEPALIVE_CONFIG" ]] || ! grep -q "^ClientAliveInterval 15" "$SSHD_FF_KEEPALIVE_CONFIG" 2>/dev/null; then
         mkdir -p /etc/ssh/sshd_config.d
         cat > "$SSHD_FF_KEEPALIVE_CONFIG" << 'EOF'
-# Managed by NOVA X Tunnel - detects and drops dead/ghost SSH sessions quickly
+# Managed by NOVA XTUNNEL - detects and drops dead/ghost SSH sessions quickly
 # (e.g. mobile clients that lost network without a clean disconnect), so the
 # online/connection-limit count reflects reality instead of counting stale sessions.
 ClientAliveInterval 15
@@ -977,7 +977,7 @@ cleanup_legacy_bandwidth_runtime() {
 setup_trial_cleanup_script() {
     cat > "$TRIAL_CLEANUP_SCRIPT" << 'TREOF'
 #!/bin/bash
-# NOVA X Tunnel Trial Account Auto-Cleanup
+# NOVA XTUNNEL Trial Account Auto-Cleanup
 # Usage: novaxtunnel-trial-cleanup.sh <username>
 DB_FILE="/etc/novaxtunnel/users.db"
 BW_DIR="/etc/novaxtunnel/bandwidth"
@@ -1049,7 +1049,7 @@ update_ssh_banners_config() {
 
     ensure_novaxtunnel_dirs
     tmp_conf="/tmp/ff_banners_new.conf"
-    echo "# NOVA X Tunnel - Dynamic per-user SSH banners" > "$tmp_conf"
+    echo "# NOVA XTUNNEL - Dynamic per-user SSH banners" > "$tmp_conf"
 
     if [[ -f "$DB_FILE" ]]; then
         while IFS=: read -r u _rest; do
@@ -1284,7 +1284,7 @@ _select_multi_user_interface() {
     if [[ ${#all_users[@]} -eq 0 ]]; then
         echo -e "${C_YELLOW}ℹ️ No users found in the manager database.${C_RESET}"
         if [[ "$include_orphan_users" == "true" ]]; then
-            echo -e "${C_DIM}No orphan NOVA X Tunnel system users were found either.${C_RESET}"
+            echo -e "${C_DIM}No orphan NOVA XTUNNEL system users were found either.${C_RESET}"
         fi
         SELECTED_USERS=("NO_USERS"); return
     fi
@@ -1426,14 +1426,14 @@ create_user() {
         return
     fi
     if db_has_user "$username"; then
-        echo -e "\n${C_RED}❌ Error: User '$username' already exists in NOVA X Tunnel.${C_RESET}"
+        echo -e "\n${C_RED}❌ Error: User '$username' already exists in NOVA XTUNNEL.${C_RESET}"
         return
     fi
     if id "$username" &>/dev/null; then
         if is_novaxtunnel_orphan_user "$username"; then
             echo -e "\n${C_YELLOW}⚠️ User '$username' already exists on the system but is missing from users.db.${C_RESET}"
             echo -e "${C_DIM}This usually happens after uninstalling the script without deleting the SSH users.${C_RESET}"
-            read -p "👉 Do you want to take control of this existing user and manage it with NOVA X Tunnel? (y/n): " adopt_confirm
+            read -p "👉 Do you want to take control of this existing user and manage it with NOVA XTUNNEL? (y/n): " adopt_confirm
             if [[ "$adopt_confirm" == "y" || "$adopt_confirm" == "Y" ]]; then
                 adopt_existing=true
             else
@@ -1441,7 +1441,7 @@ create_user() {
                 return
             fi
         else
-            echo -e "\n${C_RED}❌ Error: System user '$username' already exists and does not look like a NOVA X Tunnel SSH account.${C_RESET}"
+            echo -e "\n${C_RED}❌ Error: System user '$username' already exists and does not look like a NOVA XTUNNEL SSH account.${C_RESET}"
             return
         fi
     fi
@@ -1482,7 +1482,7 @@ create_user() {
     
     clear; show_banner
     if [[ "$adopt_existing" == "true" ]]; then
-        echo -e "${C_GREEN}✅ Existing system user '$username' has been imported into NOVA X Tunnel!${C_RESET}\n"
+        echo -e "${C_GREEN}✅ Existing system user '$username' has been imported into NOVA XTUNNEL!${C_RESET}\n"
     else
         echo -e "${C_GREEN}✅ User '$username' created successfully!${C_RESET}\n"
     fi
@@ -1505,7 +1505,7 @@ create_user() {
 }
 
 delete_user() {
-    _select_multi_user_interface "--- 🗑️ Delete NOVA X Tunnel Users ---" "true"
+    _select_multi_user_interface "--- 🗑️ Delete NOVA XTUNNEL Users ---" "true"
     if [[ ${#SELECTED_USERS[@]} -eq 0 || "${SELECTED_USERS[0]}" == "NO_USERS" ]]; then return; fi
     
     echo -e "\n${C_RED}⚠️ You selected ${#SELECTED_USERS[@]} user(s) to delete: ${C_YELLOW}${SELECTED_USERS[*]}${C_RESET}"
@@ -1899,7 +1899,7 @@ _enable_banner_in_sshd_config() {
     disable_dynamic_ssh_banner_system
     sed -i.bak -E 's/^( *Banner *).*/#\1/' /etc/ssh/sshd_config
     if ! grep -q -E "^Banner $SSH_BANNER_FILE" /etc/ssh/sshd_config; then
-        echo -e "\n# NOVA X Tunnel SSH Banner\nBanner $SSH_BANNER_FILE" >> /etc/ssh/sshd_config
+        echo -e "\n# NOVA XTUNNEL SSH Banner\nBanner $SSH_BANNER_FILE" >> /etc/ssh/sshd_config
     fi
     echo -e "${C_GREEN}✅ sshd_config updated.${C_RESET}"
 }
@@ -2088,7 +2088,7 @@ EOF
     echo -e "\n${C_GREEN}📝 Creating systemd service file...${C_RESET}"
     cat > "$UDP_CUSTOM_SERVICE_FILE" <<EOF
 [Unit]
-Description=UDP Custom by NOVA X Tunnel
+Description=UDP Custom by NOVA XTUNNEL
 After=network.target
 
 [Service]
@@ -2817,7 +2817,7 @@ install_ssl_tunnel() {
     echo -e "   • Loopback SSL decryptor on ${C_WHITE}${HAPROXY_INTERNAL_DECRYPT_PORT}${C_RESET}"
 
     if [ -f "$HAPROXY_CONFIG" ] || [ -f "$NGINX_CONFIG_FILE" ]; then
-        echo -e "\n${C_YELLOW}⚠️ Existing HAProxy/Nginx configs will be replaced with the NOVA X Tunnel edge layout.${C_RESET}"
+        echo -e "\n${C_YELLOW}⚠️ Existing HAProxy/Nginx configs will be replaced with the NOVA XTUNNEL edge layout.${C_RESET}"
         read -p "👉 Continue with the replacement? (y/n): " confirm_replace
         if [[ "$confirm_replace" != "y" && "$confirm_replace" != "Y" ]]; then
             echo -e "${C_RED}❌ Installation cancelled.${C_RESET}"
@@ -4231,7 +4231,7 @@ _write_pyproxy_script() {
     cat > "$PYPROXY_SCRIPT" <<'PYEOF'
 #!/usr/bin/env python3
 # encoding: utf-8
-# NOVA X Tunnel - CONNECT/SOCKS-over-HTTP tunnel (Python 3 port of proxy.py / wsproxy.py)
+# NOVA XTUNNEL - CONNECT/SOCKS-over-HTTP tunnel (Python 3 port of proxy.py / wsproxy.py)
 import socket
 import threading
 import select
@@ -4411,7 +4411,7 @@ class ConnectionHandler(threading.Thread):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='NOVA X Tunnel - PY SOCKS/WS proxy')
+    parser = argparse.ArgumentParser(description='NOVA XTUNNEL - PY SOCKS/WS proxy')
     parser.add_argument('-b', '--bind', default='0.0.0.0')
     parser.add_argument('-p', '--port', type=int, required=True)
     parser.add_argument('--response-code', default='101')
@@ -4421,7 +4421,7 @@ def main():
 
     response = "HTTP/1.1 {} {}\r\n\r\n".format(args.response_code, args.response_msg)
 
-    print("NOVA X Tunnel PY Proxy - listening on {}:{}".format(args.bind, args.port))
+    print("NOVA XTUNNEL PY Proxy - listening on {}:{}".format(args.bind, args.port))
     server = Server(args.bind, args.port, response, args.default_host)
     server.start()
     try:
@@ -4480,7 +4480,7 @@ install_pyproxy() {
     echo -e "${C_GREEN}📝 Creating systemd services...${C_RESET}"
     cat > "$PYPROXY_SOCKS_SERVICE" <<EOF
 [Unit]
-Description=NOVA X Tunnel PY SOCKS Proxy
+Description=NOVA XTUNNEL PY SOCKS Proxy
 After=network.target
 
 [Service]
@@ -4496,7 +4496,7 @@ EOF
 
     cat > "$PYPROXY_WS_SERVICE" <<EOF
 [Unit]
-Description=NOVA X Tunnel PY WebSocket Proxy
+Description=NOVA XTUNNEL PY WebSocket Proxy
 After=network.target
 
 [Service]
@@ -4812,7 +4812,7 @@ zivpn_cleanup_expired_passwords() {
 _zivpn_install_cleanup_cron() {
     cat > "$ZIVPN_CLEANUP_SCRIPT" << CLEOF
 #!/bin/bash
-# NOVA X Tunnel - ZiVPN expired password sweeper
+# NOVA XTUNNEL - ZiVPN expired password sweeper
 ZIVPN_CONFIG_FILE="$ZIVPN_CONFIG_FILE"
 ZIVPN_META_FILE="$ZIVPN_META_FILE"
 command -v jq >/dev/null 2>&1 || exit 0
@@ -5016,7 +5016,7 @@ purge_nginx() {
     rm -f "${NGINX_CONFIG_FILE}.bak.novaxtunnel"
     rm -f "$NGINX_PORTS_FILE"
     if [[ "$mode" != "silent" ]]; then
-        echo -e "\n${C_GREEN}✅ Internal Nginx proxy purged. Shared NOVA X Tunnel certificates were kept.${C_RESET}"
+        echo -e "\n${C_GREEN}✅ Internal Nginx proxy purged. Shared NOVA XTUNNEL certificates were kept.${C_RESET}"
     fi
 }
 
@@ -5026,7 +5026,7 @@ install_nginx_proxy() {
     echo -e "\n${C_CYAN}This keeps HAProxy on ${EDGE_PUBLIC_HTTP_PORT}/${EDGE_PUBLIC_TLS_PORT} and rewrites the internal Nginx proxy on ${NGINX_INTERNAL_HTTP_PORT}/${NGINX_INTERNAL_TLS_PORT}.${C_RESET}"
 
     if [ ! -s "$SSL_CERT_FILE" ] || [ ! -s "$SSL_CERT_CHAIN_FILE" ] || [ ! -s "$SSL_CERT_KEY_FILE" ]; then
-        echo -e "\n${C_YELLOW}⚠️ No shared NOVA X Tunnel certificate was found.${C_RESET}"
+        echo -e "\n${C_YELLOW}⚠️ No shared NOVA XTUNNEL certificate was found.${C_RESET}"
         echo -e "${C_DIM}Running the full HAProxy edge installer so the certificate and both services stay aligned.${C_RESET}"
         install_ssl_tunnel
         return
@@ -5573,7 +5573,7 @@ uninstall_script() {
     local remove_users_on_uninstall=false
     mapfile -t removable_users < <(get_novaxtunnel_known_users)
     if [[ ${#removable_users[@]} -gt 0 ]]; then
-        echo -e "\n${C_YELLOW}NOVA X Tunnel SSH users detected on this VPS:${C_RESET} ${removable_users[*]}"
+        echo -e "\n${C_YELLOW}NOVA XTUNNEL SSH users detected on this VPS:${C_RESET} ${removable_users[*]}"
         read -p "👉 Do you also want to permanently delete these SSH users before uninstalling? (y/n): " remove_users_confirm
         if [[ "$remove_users_confirm" == "y" || "$remove_users_confirm" == "Y" ]]; then
             remove_users_on_uninstall=true
@@ -5583,7 +5583,7 @@ uninstall_script() {
     echo -e "\n${C_BLUE}--- 💥 Starting Uninstallation 💥 ---${C_RESET}"
     
     if [[ "$remove_users_on_uninstall" == "true" ]]; then
-        echo -e "\n${C_BLUE}🗑️ Removing NOVA X Tunnel SSH users before uninstall...${C_RESET}"
+        echo -e "\n${C_BLUE}🗑️ Removing NOVA XTUNNEL SSH users before uninstall...${C_RESET}"
         delete_novaxtunnel_user_accounts "${removable_users[@]}"
     fi
     

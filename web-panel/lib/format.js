@@ -1,4 +1,4 @@
-// NOVA X Tunnel - dynamic data-size formatting (auto-scales Ko -> Mo -> Go -> To, etc.
+// NOVA XTUNNEL - dynamic data-size formatting (auto-scales Ko -> Mo -> Go -> To, etc.
 // instead of always showing "Go", which made small/zero usage look wrong, e.g. "0.0 Go").
 
 const UNITS = {

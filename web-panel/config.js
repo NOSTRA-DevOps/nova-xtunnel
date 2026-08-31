@@ -1,4 +1,4 @@
-// NOVA X Tunnel - shared configuration
+// NOVA XTUNNEL - shared configuration
 // IMPORTANT: these paths intentionally match the ones used by menu.sh (the terminal panel)
 // so the web panel and the terminal panel manage the SAME underlying SSH/ZiVPN accounts
 // without conflicting or requiring any reinstall.

@@ -1,10 +1,4 @@
-// Read-only protocol status for the admin "System" page. Installing/uninstalling protocols
-// is deliberately NOT exposed from the web panel - some installs (DNSTT needs a domain,
-// PY Proxy needs port numbers, X-UI needs a version, badvpn compiles from source and can
-// take minutes) require real interactive input or carry enough risk that a wrong web-only
-// click could leave a broken/misconfigured service. This just checks systemd/binary
-// presence and reports Active/Inactive; actual install/uninstall stays in the terminal
-// panel (menu.sh), which can ask the real questions.
+// Read-only protocol status for the admin "System" page. 
 const { execFileSync } = require('child_process');
 
 function systemdActive(unit) {

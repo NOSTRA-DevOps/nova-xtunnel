@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// NOVA X Tunnel - admin account maintenance helper.
+// NOVA XTUNNEL - admin account maintenance helper.
 // Used by the `novaxpanel` bash CLI so that admin username/password changes go through
 // the exact same bcrypt hashing as the web app (bcryptjs), instead of juggling SQL by hand.
 //

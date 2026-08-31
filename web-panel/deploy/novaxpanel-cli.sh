@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOVA X Tunnel - Web Panel maintenance CLI ("novaxpanel").
+# NOVA XTUNNEL - Web Panel maintenance CLI ("novaxpanel").
 # Installed to /usr/local/bin/novaxpanel by deploy/install.sh.
 # Run `novaxpanel` for the interactive menu, or `novaxpanel <command>` directly.
 
@@ -38,7 +38,7 @@ restart_panel() { systemctl restart novaxpanel && echo "✅ Service novaxpanel r
 cmd_status() {
   local tls_mode; tls_mode=$(env_get TLS_MODE)
   echo "=================================================="
-  echo " NOVA X Tunnel — Status of the web panel"
+  echo " NOVA XTUNNEL — Status of the web panel"
   echo "=================================================="
   echo " Domain         : $(env_get DOMAIN)"
   echo " TLS Mode       : $([[ "$tls_mode" == "node" ]] && echo "Direct Node (no Nginx)" || echo "Nginx reverse proxy")"
@@ -283,7 +283,7 @@ cmd_tls_mode() {
 
 cmd_uninstall() {
   echo "=================================================="
-  echo " ⚠️  Uninstalling the NOVA X Tunnel web panel"
+  echo " ⚠️  Uninstalling the NOVA XTUNNEL web panel"
   echo "=================================================="
   echo " This will: stop/disable the service, remove the Nginx config and the"
   echo " associated TLS certificate, and remove the 'novaxpanel' command."
@@ -330,7 +330,7 @@ show_menu() {
   cat <<'EOF'
 
 ==================================================
-   NOVA X TUNNEL — Maintenance panel (web panel)
+   NOVA XTUNNEL — Maintenance panel (web panel)
 ==================================================
   1) Status
   2) View live logs

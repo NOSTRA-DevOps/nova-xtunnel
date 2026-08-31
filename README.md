@@ -1,4 +1,4 @@
-<!-- NOVA X Tunnel Banner -->
+<!-- NOVA XTUNNEL Banner -->
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-red.svg" alt="License">
@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Powered%20by-NOSTRA-ff69b4.svg" alt="Powered by NOSTRA">
 </p>
 
-<h1 align="center">🚀 NOVA X Tunnel</h1>
+<h1 align="center">🚀 NOVA XTUNNEL</h1>
 
 <p align="center">
   <strong>Enterprise-grade VPN tunnel management suite with dual-panel architecture</strong>
@@ -16,7 +16,7 @@
 
 # 📋 Overview
 
-NOVA X Tunnel is a comprehensive VPN management solution featuring both a terminal panel for direct VPS administration and a web panel for remote multi-client management. The architecture ensures zero redundancy—both panels operate on the same system files without conflicts.
+NOVA XTUNNEL is a comprehensive VPN management solution featuring both a terminal panel for direct VPS administration and a web panel for remote multi-client management. The architecture ensures zero redundancy—both panels operate on the same system files without conflicts.
 Supported Protocols
 
     SSH WebSocket/UDP/TLS
@@ -236,7 +236,7 @@ It helps the project grow and motivates future development.
 
 This project is licensed under the **MIT License** - see the [LICENSE](./LICENSE) file for details.
 
-Copyright (c) 2026 **NOVA X Tunnel**
+Copyright (c) 2026 **NOVA XTUNNEL**
 
 ---
 

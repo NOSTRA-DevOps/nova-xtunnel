@@ -86,7 +86,7 @@ if (adminCount === 0) {
   const hash = bcrypt.hashSync(defaultPass, 10);
   db.prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)').run(defaultUser, hash);
   console.log('======================================================');
-  console.log(' NOVA X Tunnel - default admin account created:');
+  console.log(' NOVA XTUNNEL - default admin account created:');
   console.log('   username:', defaultUser);
   console.log('   password:', defaultPass);
   console.log(' CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN.');

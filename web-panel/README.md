@@ -1,4 +1,4 @@
-# NOVA X Tunnel — Web Panel (Admin / Reseller)
+# NOVA XTUNNEL — Web Panel (Admin / Reseller)
 
 Two-tier web panel (single Admin + Resellers) for managing SSH and ZiVPN
 accounts, alongside the existing terminal panel (`menu.sh`). **Both panels

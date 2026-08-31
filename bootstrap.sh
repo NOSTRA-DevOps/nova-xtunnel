@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOVA X Tunnel - bootstrap script
+# NOVA XTUNNEL - bootstrap script
 #
 # Installation (première fois) OU mise à jour (fois suivantes) — même commande :
 #
@@ -16,7 +16,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 echo "=================================================="
-echo " NOVA X Tunnel - bootstrap"
+echo " NOVA XTUNNEL - bootstrap"
 echo "=================================================="
 
 # ---------- 1. Clone (première fois) ou pull (mise à jour) ----------

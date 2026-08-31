@@ -9,7 +9,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "Mise à jour de NOVA X Tunnel (panel web)..."
+echo "Mise à jour de NOVA XTUNNEL (panel web)..."
 npm install --omit=dev
 
 if systemctl list-unit-files | grep -q "^novaxpanel.service"; then

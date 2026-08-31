@@ -1,4 +1,4 @@
-// NOVA X Tunnel - minimal server-side i18n (FR default, EN optional).
+// NOVA XTUNNEL - minimal server-side i18n (FR default, EN optional).
 // Usage in views: <%= t('some.key') %>  — falls back to the key itself if missing.
 
 const DICT = {
@@ -26,7 +26,7 @@ const DICT = {
   'system.torrent.enable': { fr: '🔒 Activer', en: '🔒 Enable' },
   'system.torrent.disable': { fr: '🔓 Désactiver', en: '🔓 Disable' },
   'system.protocols_title': { fr: 'Protocoles', en: 'Protocols' },
-  'system.protocols.description': { fr: "Statut en lecture seule. L'installation et la désinstallation se font depuis le panel terminal, qui peut poser les questions nécessaires (domaine, ports, version...).", en: 'Read-only status. Installing and uninstalling protocols is done from the terminal panel, which can ask any required questions (domain, ports, version...).' },
+  'system.protocols.description': { fr: "Statut des protocoles. L'installation et la désinstallation se font depuis le panel terminal.", en: 'Protocol status. Installing and uninstalling protocols is done from the terminal panel.' },
   'system.protocols.active': { fr: 'Actif', en: 'Active' },
   'system.protocols.inactive': { fr: 'Inactif', en: 'Inactive' },
   'nav.account_group': { fr: 'Mon compte', en: 'My account' },

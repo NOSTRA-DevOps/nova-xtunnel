@@ -1,4 +1,4 @@
-// NOVA X Tunnel - shared panel behaviors (loaded on every page via partials/head.ejs)
+// NOVA XTUNNEL - shared panel behaviors (loaded on every page via partials/head.ejs)
 
 (function () {
   const EYE_OPEN = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5Z" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.4"/></svg>';

@@ -108,12 +108,12 @@ if (servesHttpsDirectly) {
     key: fs.readFileSync(config.KEY_PATH)
   };
   https.createServer(httpsOptions, app).listen(config.PORT, () => {
-    console.log(`NOVA X Tunnel panel listening directly on https://0.0.0.0:${config.PORT} (TLS_MODE=node, no Nginx)`);
+    console.log(`NOVA XTUNNEL panel listening directly on https://0.0.0.0:${config.PORT} (TLS_MODE=node, no Nginx)`);
   });
 } else {
 
   app.listen(config.PORT, '127.0.0.1', () => {
-    console.log(`NOVA X Tunnel panel listening on http://127.0.0.1:${config.PORT} (local only, behind Nginx)`);
+    console.log(`NOVA XTUNNEL panel listening on http://127.0.0.1:${config.PORT} (local only, behind Nginx)`);
   });
 }
 

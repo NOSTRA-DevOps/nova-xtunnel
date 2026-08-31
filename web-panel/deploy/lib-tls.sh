@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOVA X Tunnel - shared TLS / Cloudflare helper functions.
+# NOVA XTUNNEL - shared TLS / Cloudflare helper functions.
 # Sourced by deploy/install.sh and the novaxpanel maintenance CLI.
 # Assumes `set -e` is active in the caller unless noted otherwise.
 

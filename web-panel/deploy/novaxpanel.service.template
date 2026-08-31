@@ -1,5 +1,5 @@
 [Unit]
-Description=NOVA X Tunnel Web Panel
+Description=NOVA XTUNNEL Web Panel
 After=network.target
 StartLimitIntervalSec=0
 

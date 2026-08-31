@@ -8,7 +8,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Mise à jour de NOVA X Tunnel (panel terminal)..."
+echo "Mise à jour de NOVA XTUNNEL (panel terminal)..."
 cp "$SCRIPT_DIR/menu.sh" /usr/local/bin/menu
 chmod +x /usr/local/bin/menu
 

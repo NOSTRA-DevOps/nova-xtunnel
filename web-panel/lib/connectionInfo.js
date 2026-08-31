@@ -101,7 +101,7 @@ function buildConnectionInfo(client) {
     if (protocols.includes('ssh_udp') && serviceActive('udp-custom')) {
       sections.push({
         title: 'UDP Custom',
-        lines: ['IP numérique requise', 'Port: 1-65535 (hors 53, 5300)', 'Obfs: aucun/plain']
+        lines: [`IP VPS: ${host}`, 'Port: 1-65535 (hors 53, 5300)', 'Obfs: aucun/plain']
       });
     }
 
