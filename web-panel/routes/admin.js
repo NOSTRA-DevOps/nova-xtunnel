@@ -240,9 +240,13 @@ router.post('/clients/:clientId/password', (req, res) => {
 // ---- System management: Protocol Manager / Traffic Monitor / Block Torrent ----
 // Mirrors the terminal panel (menu.sh)'s equivalent menu items - admin-only, since these
 // are server-wide infrastructure changes, not per-reseller/per-client account management.
+// Protocol status is READ-ONLY here (see lib/protocolManager.js) - installing/uninstalling
+// stays in the terminal panel, which can ask the domain/port/version questions some of
+// them need.
 const protocolManager = require('../lib/protocolManager');
 const trafficMonitor = require('../lib/trafficMonitor');
 const torrentBlock = require('../lib/torrentBlock');
+const systemInfo = require('../lib/systemInfo');
 
 router.get('/system', (req, res) => {
   const iface = trafficMonitor.getDefaultInterface();
@@ -252,28 +256,10 @@ router.get('/system', (req, res) => {
     totals: iface ? trafficMonitor.getTotalsSinceBoot(iface) : { rx: null, tx: null },
     vnstatInstalled: trafficMonitor.vnstatAvailable(),
     torrentBlockEnabled: torrentBlock.isEnabled(),
+    osName: systemInfo.getOsName(),
+    serverIp: systemInfo.getServerIp(),
+    uptime: systemInfo.getUptime(),
     error: req.query.error, success: req.query.success
-  });
-});
-
-router.post('/system/protocol/:action', (req, res) => {
-  try {
-    if (!protocolManager.ALLOWED_FUNCTIONS.has(req.params.action)) {
-      throw new Error('Cette action nécessite des informations supplémentaires (domaine, ports, version...) — utilisez le panel terminal.');
-    }
-    protocolManager.runAction(req.params.action, actorFrom(req));
-    audit.log('admin', req.session.username, 'protocol_action', `Action protocole lancée : ${req.params.action}`, null);
-    res.redirect('/admin/system?success=' + encodeURIComponent('Opération lancée en arrière-plan. Suivez sa progression ci-dessous.'));
-  } catch (e) {
-    res.redirect('/admin/system?error=' + encodeURIComponent(e.message));
-  }
-});
-
-router.get('/system/protocol/:action/status', (req, res) => {
-  if (!protocolManager.ALLOWED_FUNCTIONS.has(req.params.action)) return res.status(404).json({ error: 'unknown action' });
-  res.json({
-    job: protocolManager.getJobStatus(req.params.action),
-    log: protocolManager.getJobLog(req.params.action)
   });
 });
 
@@ -288,8 +274,8 @@ router.get('/system/traffic', async (req, res) => {
 router.post('/system/torrent-block', (req, res) => {
   try {
     const enabled = torrentBlock.setEnabled(req.body.enabled === '1');
-    audit.log('admin', req.session.username, 'torrent_block_toggle', `Blocage torrent ${enabled ? 'activé' : 'désactivé'}`, null);
-    res.redirect('/admin/system?success=' + encodeURIComponent(enabled ? 'Blocage torrent activé.' : 'Blocage torrent désactivé.'));
+    audit.log('admin', req.session.username, 'torrent_block_toggle', `Torrent blocking ${enabled ? 'enabled' : 'disabled'}`, null);
+    res.redirect('/admin/system?success=' + encodeURIComponent(enabled ? 'Torrent blocking enabled.' : 'Torrent blocking disabled.'));
   } catch (e) {
     res.redirect('/admin/system?error=' + encodeURIComponent(e.message));
   }

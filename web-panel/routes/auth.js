@@ -23,7 +23,7 @@ const loginLimiter = rateLimit({
 });
 
 router.get('/login', (req, res) => {
-  if (req.session && req.session.role === 'admin') return res.redirect('/admin');
+  if (req.session && req.session.role === 'admin') return res.redirect('/admin/system');
   if (req.session && req.session.role === 'reseller') return res.redirect('/reseller');
   res.render('login', { error: null });
 });
@@ -40,7 +40,7 @@ router.post('/login', loginLimiter, (req, res) => {
     req.session.regenerate((err) => {
       if (err) return res.render('login', { error: tr(req, 'login.error.server') });
       Object.assign(req.session, sessionData, { lang });
-      req.session.save(() => res.redirect(sessionData.role === 'admin' ? '/admin' : '/reseller'));
+      req.session.save(() => res.redirect(sessionData.role === 'admin' ? '/admin/system' : '/reseller'));
     });
   }
 

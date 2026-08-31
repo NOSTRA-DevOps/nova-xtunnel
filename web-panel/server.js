@@ -58,6 +58,7 @@ app.use((req, res, next) => {
   res.locals.role = req.session ? req.session.role : null;
   res.locals.username = req.session ? req.session.username : null;
   res.locals.version = config.VERSION;
+  res.locals.currentPath = req.path;
   const lang = (req.session && req.session.lang === 'en') ? 'en' : 'fr';
   res.locals.lang = lang;
   res.locals.t = (key) => i18n.t(key, lang);
@@ -75,7 +76,7 @@ app.get('/lang/:code', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  if (req.session.role === 'admin') return res.redirect('/admin');
+  if (req.session.role === 'admin') return res.redirect('/admin/system');
   if (req.session.role === 'reseller') return res.redirect('/reseller');
   res.redirect('/login');
 });
@@ -110,11 +111,12 @@ if (servesHttpsDirectly) {
     console.log(`NOVA X Tunnel panel listening directly on https://0.0.0.0:${config.PORT} (TLS_MODE=node, no Nginx)`);
   });
 } else {
-  
+
   app.listen(config.PORT, '127.0.0.1', () => {
     console.log(`NOVA X Tunnel panel listening on http://127.0.0.1:${config.PORT} (local only, behind Nginx)`);
   });
 }
+
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection (panel kept running):', reason);

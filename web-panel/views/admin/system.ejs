@@ -1,48 +1,68 @@
-<%- include('../partials/head', { title: 'Système — NOVA X Tunnel' }) %>
+<%- include('../partials/head', { title: t('system.title') + ' — NOVA X Tunnel' }) %>
 <div class="shell">
   <%- include('../partials/sidebar', { role: 'admin' }) %>
 
   <div class="main">
     <div class="topbar">
       <div>
-        <h1 class="page-title">Système</h1>
-        <p class="page-sub">Protocoles, trafic réseau et blocage torrent — identique au panel terminal (<code>menu</code>).</p>
+        <h1 class="page-title"><%= t('system.title') %></h1>
+        <p class="page-sub"><%= t('system.subtitle') %></p>
       </div>
-      <a href="/admin" class="btn-ghost"><%= t('common.back') %></a>
     </div>
 
     <% if (error) { %><div class="alert error"><%= error %></div><% } %>
     <% if (success) { %><div class="alert success"><%= success %></div><% } %>
 
+    <!-- ---- Server info ---- -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2><%= t('system.info_title') %></h2>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label"><%= t('system.info.os') %></div>
+          <div class="stat-value" style="font-size:15px;"><%= osName %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><%= t('system.info.ip') %></div>
+          <div class="stat-value mono" style="font-size:15px;"><%= serverIp %></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label"><%= t('system.info.uptime') %></div>
+          <div class="stat-value" style="font-size:15px;"><%= uptime %></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ---- Traffic Monitor ---- -->
     <div class="panel">
       <div class="panel-head">
-        <h2>📈 Moniteur de trafic réseau</h2>
+        <h2><%= t('system.traffic_title') %></h2>
       </div>
       <% if (!iface) { %>
-        <p class="muted">Impossible de détecter l'interface réseau par défaut.</p>
+        <p class="muted"><%= t('system.traffic.no_interface') %></p>
       <% } else { %>
-        <p class="muted" style="margin-bottom:14px;">Interface : <span class="mono"><%= iface %></span></p>
+        <p class="muted" style="margin-bottom:14px;"><%= t('system.traffic.interface') %>: <span class="mono"><%= iface %></span></p>
         <div class="stat-grid" style="margin-bottom:10px;">
           <div class="stat-card">
-            <div class="stat-label">⬇️ Téléchargement</div>
+            <div class="stat-label">⬇️ <%= t('system.traffic.download') %></div>
             <div class="stat-value" id="traffic-rx-rate">—</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">⬆️ Envoi</div>
+            <div class="stat-label">⬆️ <%= t('system.traffic.upload') %></div>
             <div class="stat-value" id="traffic-tx-rate">—</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Total depuis le démarrage</div>
+            <div class="stat-label"><%= t('system.traffic.total_since_boot') %></div>
             <div class="stat-value" style="font-size:14px;" id="traffic-totals">
-              ⬇️ <%= totals.rx != null ? (Math.round(totals.rx / 1024 / 1024)) + ' Mo' : '—' %>
+              ⬇️ <%= totals.rx != null ? (Math.round(totals.rx / 1024 / 1024)) + ' MB' : '—' %>
               &nbsp;/&nbsp;
-              ⬆️ <%= totals.tx != null ? (Math.round(totals.tx / 1024 / 1024)) + ' Mo' : '—' %>
+              ⬆️ <%= totals.tx != null ? (Math.round(totals.tx / 1024 / 1024)) + ' MB' : '—' %>
             </div>
           </div>
         </div>
         <% if (!vnstatInstalled) { %>
-          <p class="muted">Pour l'historique jour/mois, installez vnStat depuis le panel terminal (menu → Traffic Monitor → option 3).</p>
+          <p class="muted"><%= t('system.traffic.vnstat_hint') %></p>
         <% } %>
       <% } %>
     </div>
@@ -50,62 +70,37 @@
     <!-- ---- Block Torrent ---- -->
     <div class="panel">
       <div class="panel-head">
-        <h2>🚫 Blocage Torrent (Anti-P2P)</h2>
+        <h2><%= t('system.torrent_title') %></h2>
       </div>
-      <p class="muted" style="margin-bottom:14px;">Utilise le filtrage de motifs iptables pour bloquer les mots-clés torrent courants (BitTorrent, .torrent, info_hash, ...).</p>
+      <p class="muted" style="margin-bottom:14px;"><%= t('system.torrent.description') %></p>
       <div style="display:flex; align-items:center; gap:14px;">
         <span class="pill <%= torrentBlockEnabled ? 'active' : 'deleted' %>">
-          <%= torrentBlockEnabled ? 'Activé' : 'Désactivé' %>
+          <%= torrentBlockEnabled ? t('system.torrent.enabled') : t('system.torrent.disabled') %>
         </span>
         <form method="POST" action="/admin/system/torrent-block">
           <input type="hidden" name="enabled" value="<%= torrentBlockEnabled ? '0' : '1' %>">
           <button type="submit" class="btn small <%= torrentBlockEnabled ? 'danger' : '' %>">
-            <%= torrentBlockEnabled ? '🔓 Désactiver' : '🔒 Activer' %>
+            <%= torrentBlockEnabled ? t('system.torrent.disable') : t('system.torrent.enable') %>
           </button>
         </form>
       </div>
     </div>
 
-    <!-- ---- Protocol Manager ---- -->
+    <!-- ---- Protocols (read-only status) ---- -->
     <div class="panel">
       <div class="panel-head">
-        <h2>🔌 Gestion des protocoles</h2>
+        <h2><%= t('system.protocols_title') %></h2>
       </div>
-      <p class="muted" style="margin-bottom:14px;">
-        Les installations tournent en arrière-plan (badvpn compile depuis les sources et peut prendre plusieurs minutes).
-        DNSTT, PY Proxy et X-UI demandent des informations (domaine, ports, version) que le panel web ne peut pas deviner sans risquer une mauvaise config — leur statut est affiché en lecture seule, installez/désinstallez-les depuis le panel terminal.
-      </p>
-      <div class="table-scroll">
-      <table>
-        <thead><tr><th>Protocole</th><th>Statut</th><th></th></tr></thead>
-        <tbody>
-          <% protocols.forEach((p) => { %>
-            <tr>
-              <td><%= p.label %></td>
-              <td>
-                <span class="pill <%= p.active ? 'active' : 'deleted' %>">
-                  <%= p.active ? (p.installedLabel ? 'Installé' : 'Actif') : (p.installedLabel ? 'Non installé' : 'Inactif') %>
-                </span>
-                <div class="muted" data-job-text="<%= (p.job && p.job.state === 'running') ? (p.job.action || p.installFn) : '' %>" style="<%= p.job && p.job.state === 'running' ? '' : 'display:none;' %>">
-                  ⏳ Opération en cours…
-                </div>
-              </td>
-              <td style="text-align:right;">
-                <% if (p.actionable) { %>
-                  <form method="POST" action="/admin/system/protocol/<%= p.installFn %>" style="display:inline;">
-                    <button type="submit" class="btn-ghost small" <%= (p.active || (p.job && p.job.state === 'running')) ? 'disabled' : '' %>>📦 Installer</button>
-                  </form>
-                  <form method="POST" action="/admin/system/protocol/<%= p.uninstallFn %>" style="display:inline;">
-                    <button type="submit" class="btn-ghost small" <%= (!p.active || (p.job && p.job.state === 'running')) ? 'disabled' : '' %>>🗑️ Désinstaller</button>
-                  </form>
-                <% } else { %>
-                  <span class="muted">Via panel terminal</span>
-                <% } %>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+      <p class="muted" style="margin-bottom:14px;"><%= t('system.protocols.description') %></p>
+      <div class="protocol-grid">
+        <% protocols.forEach((p) => { %>
+          <div class="protocol-card">
+            <div class="protocol-card-name"><%= p.label %></div>
+            <div class="protocol-card-status <%= p.active ? 'active' : 'inactive' %>">
+              <%= p.active ? t('system.protocols.active') : t('system.protocols.inactive') %>
+            </div>
+          </div>
+        <% }) %>
       </div>
     </div>
   </div>
@@ -121,8 +116,8 @@
 
     function fmtRate(bps) {
       var kbps = bps / 1024;
-      if (kbps >= 1024) return (kbps / 1024).toFixed(2) + ' Mo/s';
-      return Math.round(kbps) + ' Ko/s';
+      if (kbps >= 1024) return (kbps / 1024).toFixed(2) + ' MB/s';
+      return Math.round(kbps) + ' KB/s';
     }
 
     function poll() {
@@ -131,31 +126,12 @@
         rxEl.textContent = fmtRate(data.rate.rxBps);
         txEl.textContent = fmtRate(data.rate.txBps);
         if (totalsEl && data.totals) {
-          totalsEl.innerHTML = '⬇️ ' + Math.round(data.totals.rx / 1024 / 1024) + ' Mo &nbsp;/&nbsp; ⬆️ ' + Math.round(data.totals.tx / 1024 / 1024) + ' Mo';
+          totalsEl.innerHTML = '⬇️ ' + Math.round(data.totals.rx / 1024 / 1024) + ' MB &nbsp;/&nbsp; ⬆️ ' + Math.round(data.totals.tx / 1024 / 1024) + ' MB';
         }
       }).catch(function () {});
     }
     poll();
     setInterval(poll, 2000);
-  })();
-
-  // Poll job status for any protocol action currently running, so a page refresh mid-
-  // install still shows progress instead of a static "Installer" button.
-  (function () {
-    document.querySelectorAll('[data-job-text]').forEach(function (el) {
-      if (el.style.display === 'none') return;
-      var action = el.getAttribute('data-job-text');
-      function poll() {
-        fetch('/admin/system/protocol/' + action + '/status').then(function (r) { return r.json(); }).then(function (data) {
-          if (!data.job || data.job.state !== 'running') {
-            location.reload();
-            return;
-          }
-          setTimeout(poll, 3000);
-        }).catch(function () {});
-      }
-      poll();
-    });
   })();
 </script>
 </body>

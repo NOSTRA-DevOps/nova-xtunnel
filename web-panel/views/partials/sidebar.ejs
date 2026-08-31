@@ -25,19 +25,19 @@
   <% if (role === 'admin') { %>
   <div class="nav-group">
     <div class="nav-label"><%= t('nav.admin_group') %></div>
-    <a class="nav-link active" href="/admin"><%= t('nav.resellers') %></a>
-    <a class="nav-link" href="/admin/system"><%= t('nav.system') %></a>
+    <a class="nav-link <%= currentPath === '/admin' ? 'active' : '' %>" href="/admin"><%= t('nav.resellers') %></a>
+    <a class="nav-link <%= currentPath === '/admin/system' ? 'active' : '' %>" href="/admin/system"><%= t('nav.system') %></a>
   </div>
   <% } else { %>
   <div class="nav-group">
     <div class="nav-label"><%= t('nav.account_group') %></div>
-    <a class="nav-link active" href="/reseller"><%= t('nav.my_clients') %></a>
+    <a class="nav-link <%= currentPath === '/reseller' ? 'active' : '' %>" href="/reseller"><%= t('nav.my_clients') %></a>
   </div>
   <% } %>
 
   <div class="nav-group">
     <div class="nav-label"><%= t('nav.info_group') %></div>
-    <a class="nav-link" href="<%= role === 'admin' ? '/admin/activity' : '/reseller/activity' %>"><%= t('nav.activity') %></a>
+    <a class="nav-link <%= currentPath === (role === 'admin' ? '/admin/activity' : '/reseller/activity') ? 'active' : '' %>" href="<%= role === 'admin' ? '/admin/activity' : '/reseller/activity' %>"><%= t('nav.activity') %></a>
     <a class="nav-link" href="/about" target="_blank" rel="noopener"><%= t('nav.about') %></a>
   </div>
 

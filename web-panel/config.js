@@ -51,7 +51,8 @@ module.exports = {
     { key: 'zivpn', label: 'ZIVPN' }
   ],
 
-
-  MENU_SCRIPT_PATH: '/usr/local/bin/menu',
-  PROTOCOL_JOBS_DIR: '/etc/novaxtunnel/protocol_jobs'
+  // Bridge into the terminal panel (menu.sh) for admin-only system-level actions (protocol
+  // installs, torrent blocking) that reuse the exact same tested bash logic instead of a
+  // separate re-implementation. See lib/protocolManager.js.
+  MENU_SCRIPT_PATH: '/usr/local/bin/menu'
 };
