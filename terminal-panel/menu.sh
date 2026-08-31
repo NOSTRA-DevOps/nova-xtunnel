@@ -5466,16 +5466,16 @@ EOF
     local MID="├$(printf '─%.0s' $(seq 1 $BOX_W))┤"
     local BOTTOM="╰$(printf '─%.0s' $(seq 1 $BOX_W))╯"
 
-    echo -e "${C_GRAY}${TOP}${C_RESET}"
-    printf "${C_GRAY}│${C_RESET} 🖥️  ${C_GRAY}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "System" "${BANNER_CACHE_OS_NAME}"
-    printf "${C_GRAY}│${C_RESET} 🌐 ${C_GRAY}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "VPS IP" "${BANNER_CACHE_SERVER_IP}"
-    printf "${C_GRAY}│${C_RESET} ⏱️  ${C_GRAY}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "Uptime" "${BANNER_CACHE_UP_TIME}"
-    echo -e "${C_GRAY}${MID}${C_RESET}"
-    printf "${C_GRAY}│${C_RESET} 💾 ${C_GRAY}%-13s${C_RESET} %s\n" "Memory" "${BANNER_CACHE_RAM_USAGE}% used"
-    printf "${C_GRAY}│${C_RESET} ⚙️  ${C_GRAY}%-13s${C_RESET} ${C_GREEN}%s${C_RESET}\n" "CPU Load" "${BANNER_CACHE_CPU_LOAD}"
-    printf "${C_GRAY}│${C_RESET} 👥 ${C_GRAY}%-13s${C_RESET} ${C_WHITE}%s${C_RESET} accounts ${C_GRAY}•${C_RESET} Online: ${C_WHITE}%s${C_RESET}\n" \
+    echo -e "${C_WHITE}${TOP}${C_RESET}"
+    printf "${C_WHITE}│${C_RESET} 🖥️ ${C_CYAN}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "System" "${BANNER_CACHE_OS_NAME}"
+    printf "${C_WHITE}│${C_RESET} 🌐 ${C_CYAN}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "VPS IP" "${BANNER_CACHE_SERVER_IP}"
+    printf "${C_WHITE}│${C_RESET} ⏱️ ${C_CYAN}%-13s${C_RESET} ${C_WHITE}%s${C_RESET}\n" "Uptime" "${BANNER_CACHE_UP_TIME}"
+    echo -e "${C_WHITE}${MID}${C_RESET}"
+    printf "${C_WHITE}│${C_RESET} 💾 ${C_CYAN}%-13s${C_RESET} %s\n" "Memory" "${BANNER_CACHE_RAM_USAGE}% used"
+    printf "${C_WHITE}│${C_RESET} ⚙️  ${C_CYAN}%-13s${C_RESET} ${C_GREEN}%s${C_RESET}\n" "CPU Load" "${BANNER_CACHE_CPU_LOAD}"
+    printf "${C_WHITE}│${C_RESET} 👥 ${C_CYAN}%-13s${C_RESET} ${C_WHITE}%s${C_RESET} accounts ${C_GRAY}•${C_RESET} Online: ${C_WHITE}%s${C_RESET}\n" \
         "Accounts" "${BANNER_CACHE_TOTAL_USERS}" "${BANNER_CACHE_ONLINE_USERS}"
-    echo -e "${C_GRAY}${BOTTOM}${C_RESET}"
+    echo -e "${C_WHITE}${BOTTOM}${C_RESET}"
 }
 
 
@@ -5506,30 +5506,30 @@ protocol_menu() {
         local xui_status; if command -v x-ui &> /dev/null; then xui_status="${C_STATUS_A}(Installed)${C_RESET}"; else xui_status="${C_STATUS_I}(Not Installed)${C_RESET}"; fi
         local pyproxy_status; if systemctl is-active --quiet pyproxy-socks.service || systemctl is-active --quiet pyproxy-ws.service; then pyproxy_status="${C_STATUS_A}(Active)${C_RESET}"; else pyproxy_status="${C_STATUS_I}(Inactive)${C_RESET}"; fi
         
-        echo -e "\n ${C_TITLE}══════════════[ ${C_BOLD}🔌 PROTOCOL & PANEL MANAGEMENT ${C_RESET}${C_TITLE}]══════════════${C_RESET}"
-        echo -e "   ${C_ACCENT}--- TUNNELLING PROTOCOLS---${C_RESET}"
-        printf "   ${C_CHOICE}[ 1]${C_RESET} %-45s %s\n" "🚀 Install badvpn (UDP 7300)" "$badvpn_status"
-        printf "   ${C_CHOICE}[ 2]${C_RESET} %-45s\n" "🗑️ Uninstall badvpn"
-        printf "   ${C_CHOICE}[ 3]${C_RESET} %-45s %s\n" "🚀 Install udp-custom" "$udp_custom_status"
-        printf "   ${C_CHOICE}[ 4]${C_RESET} %-45s\n" "🗑️ Uninstall udp-custom"
-        printf "   ${C_CHOICE}[ 5]${C_RESET} %-45s %s\n" "🔒 Install ${ssl_tunnel_text}" "$ssl_tunnel_status"
-        printf "   ${C_CHOICE}[ 6]${C_RESET} %-45s\n" "🗑️ Uninstall HAProxy Edge Stack"
-        printf "   ${C_CHOICE}[ 7]${C_RESET} %-45s %s\n" "📡 Install/View DNSTT (Port 53)" "$dnstt_status"
-        printf "   ${C_CHOICE}[ 8]${C_RESET} %-45s\n" "🗑️ Uninstall DNSTT"
-        printf "   ${C_CHOICE}[ 9]${C_RESET} %-45s %s\n" "🦅 Install Falcon Proxy (Select Version)" "$falconproxy_status"
-        printf "   ${C_CHOICE}[10]${C_RESET} %-45s\n" "🗑️ Uninstall Falcon Proxy"
-        printf "   ${C_CHOICE}[11]${C_RESET} %-45s %s\n" "🛡️ Install ZiVPN (UDP 5667)" "$zivpn_status"
-        printf "   ${C_CHOICE}[12]${C_RESET} %-45s\n" "🗑️ Uninstall ZiVPN"
-        printf "   ${C_CHOICE}[13]${C_RESET} %-45s %s\n" "🌐 Install/Manage Internal Nginx (8880/8443)" "$nginx_status"
-        printf "   ${C_CHOICE}[14]${C_RESET} %-45s %s\n" "🐍 Install PY SOCKS/WS Proxy (legacy)" "$pyproxy_status"
-        printf "   ${C_CHOICE}[15]${C_RESET} %-45s\n" "🗑️ Uninstall PY SOCKS/WS Proxy"
+        echo -e "\n${C_TITLE}══════════════[ ${C_BOLD}🔌 PROTOCOL & PANEL MANAGEMENT ${C_RESET}${C_TITLE}]══════════════${C_RESET}"
+        echo -e "  ${C_ACCENT}--- TUNNELLING PROTOCOLS---${C_RESET}"
+        printf "  ${C_CHOICE}[ 1]${C_RESET} %-45s %s\n" "🚀 Install badvpn (UDP 7300)" "$badvpn_status"
+        printf "  ${C_CHOICE}[ 2]${C_RESET} %-45s\n" "🗑️ Uninstall badvpn"
+        printf "  ${C_CHOICE}[ 3]${C_RESET} %-45s %s\n" "🚀 Install udp-custom" "$udp_custom_status"
+        printf "  ${C_CHOICE}[ 4]${C_RESET} %-45s\n" "🗑️ Uninstall udp-custom"
+        printf "  ${C_CHOICE}[ 5]${C_RESET} %-45s %s\n" "🔒 Install ${ssl_tunnel_text}" "$ssl_tunnel_status"
+        printf "  ${C_CHOICE}[ 6]${C_RESET} %-45s\n" "🗑️ Uninstall HAProxy Edge Stack"
+        printf "  ${C_CHOICE}[ 7]${C_RESET} %-45s %s\n" "📡 Install/View DNSTT (Port 53)" "$dnstt_status"
+        printf "  ${C_CHOICE}[ 8]${C_RESET} %-45s\n" "🗑️ Uninstall DNSTT"
+        printf "  ${C_CHOICE}[ 9]${C_RESET} %-45s %s\n" "🦅 Install Falcon Proxy (Select Version)" "$falconproxy_status"
+        printf "  ${C_CHOICE}[10]${C_RESET} %-45s\n" "🗑️ Uninstall Falcon Proxy"
+        printf "  ${C_CHOICE}[11]${C_RESET} %-45s %s\n" "🛡️ Install ZiVPN (UDP 5667)" "$zivpn_status"
+        printf "  ${C_CHOICE}[12]${C_RESET} %-45s\n" "🗑️ Uninstall ZiVPN"
+        printf "  ${C_CHOICE}[13]${C_RESET} %-45s %s\n" "🌐 Install/Manage Internal Nginx (8880/8443)" "$nginx_status"
+        printf "  ${C_CHOICE}[14]${C_RESET} %-45s %s\n" "🐍 Install PY SOCKS/WS Proxy (legacy)" "$pyproxy_status"
+        printf "  ${C_CHOICE}[15]${C_RESET} %-45s\n" "🗑️ Uninstall PY SOCKS/WS Proxy"
 
-        echo -e "   ${C_ACCENT}--- 💻 MANAGEMENT PANELS ---${C_RESET}"
-        printf "   ${C_CHOICE}[16]${C_RESET} %-45s %s\n" "💻 Install X-UI Panel" "$xui_status"
-        printf "   ${C_CHOICE}[17]${C_RESET} %-45s\n" "🗑️ Uninstall X-UI Panel"
+        echo -e "  ${C_ACCENT}--- 💻 MANAGEMENT PANELS ---${C_RESET}"
+        printf "  ${C_CHOICE}[16]${C_RESET} %-45s %s\n" "💻 Install X-UI Panel" "$xui_status"
+        printf "  ${C_CHOICE}[17]${C_RESET} %-45s\n" "🗑️ Uninstall X-UI Panel"
 
-        echo -e "  ${C_DIM}══════════════════════════════════════════════════════${C_RESET}"
-        echo -e "    ${C_WARN}[ 0]${C_RESET} ↩️ Return to Main Menu"
+        echo -e " ${C_DIM}══════════════════════════════════════════════════════${C_RESET}"
+        echo -e "   ${C_WARN}[ 0]${C_RESET} ↩️ Return to Main Menu"
         echo
         if ! read -r -p "$(echo -e ${C_PROMPT}"👉 Select an option: "${C_RESET})" choice; then
             echo
@@ -6206,15 +6206,15 @@ ssh_banner_menu() {
             *) banner_status="${C_STATUS_I}Disabled${C_RESET}" ;;
         esac
 
-        echo -e "\n  ${C_TITLE}═════════════════[ ${C_BOLD}🎨 SSH BANNER MODE: ${banner_status} ${C_RESET}${C_TITLE}]═════════════════${C_RESET}"
+        echo -e "\n ${C_TITLE}═════════════════[ ${C_BOLD}🎨 SSH BANNER MODE: ${banner_status} ${C_RESET}${C_TITLE}]═════════════════${C_RESET}"
         echo -e "${C_DIM}Static mode uses 'Banner $SSH_BANNER_FILE'. Dynamic mode shows per-user account info.${C_RESET}"
-        printf "    ${C_CHOICE}[ 1]${C_RESET} %-40s\n" "✨ Enable Dynamic Account Banner"
-        printf "    ${C_CHOICE}[ 2]${C_RESET} %-40s\n" "📋 Paste or Replace Static Banner"
-        printf "    ${C_CHOICE}[ 3]${C_RESET} %-40s\n" "👁️ View Current Static Banner"
-        printf "    ${C_CHOICE}[ 4]${C_RESET} %-40s\n" "📝 Preview Dynamic Banner"
-        printf "    ${C_DANGER}[ 5]${C_RESET} %-40s\n" "🗑️ Disable All SSH Banners"
-        echo -e "   ${C_DIM}═════════════════════════════════════════════════════${C_RESET}"
-        echo -e "     ${C_WARN}[ 0]${C_RESET} ↩️ Return to Main Menu"
+        printf "   ${C_CHOICE}[ 1]${C_RESET} %-40s\n" "✨ Enable Dynamic Account Banner"
+        printf "   ${C_CHOICE}[ 2]${C_RESET} %-40s\n" "📋 Paste or Replace Static Banner"
+        printf "   ${C_CHOICE}[ 3]${C_RESET} %-40s\n" "👁️ View Current Static Banner"
+        printf "   ${C_CHOICE}[ 4]${C_RESET} %-40s\n" "📝 Preview Dynamic Banner"
+        printf "   ${C_DANGER}[ 5]${C_RESET} %-40s\n" "🗑️ Disable All SSH Banners"
+        echo -e "  ${C_DIM}═════════════════════════════════════════════════════${C_RESET}"
+        echo -e "    ${C_WARN}[ 0]${C_RESET} ↩️ Return to Main Menu"
         echo
         if ! read -r -p "$(echo -e ${C_PROMPT}"👉 Select an option: "${C_RESET})" choice; then
             echo
@@ -6290,28 +6290,28 @@ main_menu() {
         show_banner
         
         echo
-        echo -e " ${C_TITLE}═══════════════════[ ${C_BOLD}👤 USER MANAGEMENT ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "1" "$(_pad_visual "✨ Create New User" 28)"     "2" "$(_pad_visual "🗑️ Delete user" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "3" "$(_pad_visual "🔄 Renew User Account" 28)"    "4" "$(_pad_visual "🔒 Lock User Account" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "5" "$(_pad_visual "🔓 Unlock User Account" 28)"   "6" "$(_pad_visual "✏️ Edit User Details" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "7" "$(_pad_visual "📋 List Managed Users" 28)"    "8" "$(_pad_visual "📱 Generate Client Config" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "9" "$(_pad_visual "⏱️ Create Trial Account" 28)"   "10" "$(_pad_visual "📊 View User Bandwidth" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "11" "$(_pad_visual "👥 Bulk Create Users" 28)"    "12" "$(_pad_visual "🚀 zivpn password" 28)"
+        echo -e "${C_TITLE}═══════════════════[ ${C_BOLD}👤 USER MANAGEMENT ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "1" "$(_pad_visual "✨ Create New User" 28)"     "2" "$(_pad_visual "🗑️ Delete user" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "3" "$(_pad_visual "🔄 Renew User Account" 28)"    "4" "$(_pad_visual "🔒 Lock User Account" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "5" "$(_pad_visual "🔓 Unlock User Account" 28)"   "6" "$(_pad_visual "✏️ Edit User Details" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "7" "$(_pad_visual "📋 List Managed Users" 28)"    "8" "$(_pad_visual "📱 Generate Client Config" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "9" "$(_pad_visual "⏱️ Create Trial Account" 28)"   "10" "$(_pad_visual "📊 View User Bandwidth" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "11" "$(_pad_visual "👥 Bulk Create Users" 28)"    "12" "$(_pad_visual "🚀 zivpn password" 28)"
         
         echo
-        echo -e " ${C_TITLE}═══════════════════[ ${C_BOLD}🌐 VPN & PROTOCOLS ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "13" "$(_pad_visual "🔌 Protocol Manager" 28)" "14" "$(_pad_visual "📈 Traffic Monitor (Lite)" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %-28s\n" "15" "🚫 Block Torrent (Anti-P2P)"
+        echo -e "${C_TITLE}═══════════════════[ ${C_BOLD}🌐 VPN & PROTOCOLS ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "13" "$(_pad_visual "🔌 Protocol Manager" 28)" "14" "$(_pad_visual "📈 Traffic Monitor (Lite)" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %-28s\n" "15" "🚫 Block Torrent (Anti-P2P)"
 
         echo
-        echo -e " ${C_TITLE}═══════════════════[ ${C_BOLD}⚙️ SYSTEM SETTINGS ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "16" "$(_pad_visual "☁️ CloudFlare Free Domain" 28)" "17" "$(_pad_visual "🎨 SSH Banner Config" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "18" "$(_pad_visual "🔄 Auto-Reboot Task" 28)" "19" "$(_pad_visual "💾 Backup User Data" 28)"
-        printf "   ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "20" "$(_pad_visual "📥 Restore User Data" 28)" "21" "$(_pad_visual "🧹 Cleanup Expired Users" 28)"
+        echo -e "${C_TITLE}═══════════════════[ ${C_BOLD}⚙️ SYSTEM SETTINGS ${C_RESET}${C_TITLE}]═══════════════════${C_RESET}"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "16" "$(_pad_visual "☁️ CloudFlare Free Domain" 28)" "17" "$(_pad_visual "🎨 SSH Banner Config" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "18" "$(_pad_visual "🔄 Auto-Reboot Task" 28)" "19" "$(_pad_visual "💾 Backup User Data" 28)"
+        printf "  ${C_CHOICE}[%2s]${C_RESET} %s ${C_CHOICE}[%2s]${C_RESET} %s\n" "20" "$(_pad_visual "📥 Restore User Data" 28)" "21" "$(_pad_visual "🧹 Cleanup Expired Users" 28)"
 
         echo
-        echo -e " ${C_DANGER}═══════════════════[ ${C_BOLD}🔥 DANGER ZONE ${C_RESET}${C_DANGER}]═══════════════════${C_RESET}"
-        echo -e "   ${C_DANGER}[99]${C_RESET} Uninstall Script             ${C_WARN}[ 0]${C_RESET} Exit"
+        echo -e "${C_DANGER}═══════════════════[ ${C_BOLD}🔥 DANGER ZONE ${C_RESET}${C_DANGER}]═══════════════════${C_RESET}"
+        echo -e "  ${C_DANGER}[99]${C_RESET} Uninstall Script             ${C_WARN}[ 0]${C_RESET} Exit"
         echo
         if ! read -r -p "$(echo -e ${C_PROMPT}"👉 Select an option: "${C_RESET})" choice; then
             echo

@@ -2,33 +2,31 @@
 
 cat << 'EOF' > /tmp/new_motd
 #!/bin/bash
-
-LOGO_TOP='\033[1;35m'  # Magenta / Violet électrique (haut du logo)
-LOGO_BOT='\033[1;36m'  # Cyan néon (bas du logo)
-SEP='\033[1;33m'       # Jaune Or brillant (séparateurs très visibles)
-TITLE='\033[1;37m'     # Blanc Pur Éclatant (titre principal)
-LABEL='\033[1;32m'     # Vert Émeraude (balises réseaux: Tg, WA...)
-TEXT='\033[0;37m'      # Blanc Standard (liens et texte de bienvenue)
-ACTION='\033[1;31m'    # Rouge Flash (mot 'menu')
+# Palette cohérente et visible — SANS BLANC
+PRIMARY='\033[1;36m'   # Cyan Éclatant (Logo et Titre principal)
+BLUE='\033[38;5;46m'      # Bleu Électrique (Textes informatifs et Liens)
+SEP='\033[38;5;135m'       # Violet Pur / Magenta Éclatant (Séparateurs)
+LABEL='\033[38;5;196m'     # Cyan pour les étiquettes (Tg, WA...)
+ACTION='\033[1;31m'    # Rouge (Mot 'menu' pour l'action)
 RESET='\033[0m'        # Reset
 
-# Logo avec dégradé Néon (Magenta vers Cyan)
-echo -e "${LOGO_TOP}███╗   ██╗ ██████╗ ███████╗████████╗██████╗  █████╗ ${RESET}"
-echo -e "${LOGO_TOP}████╗  ██║██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗${RESET}"
-echo -e "${LOGO_BOT}██╔██╗ ██║██║   ██║███████╗   ██║   ██████╔╝███████║${RESET}"
-echo -e "${LOGO_BOT}██║╚██╗██║██║   ██║╚════██║   ██║   ██╔══██╗██╔══██║${RESET}"
-echo -e "${LOGO_BOT}██║ ╚████║╚██████╔╝███████║   ██║   ██║  ██║██║  ██║${RESET}"
-echo -e "${LOGO_BOT}╚═╝  ╚═══╝ ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝${RESET}"
+# Logo uniforme en Cyan Éclatant
+echo -e "${PRIMARY}███╗   ██╗ ██████╗ ███████╗████████╗██████╗  █████╗ ${RESET}"
+echo -e "${PRIMARY}████╗  ██║██╔═══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗${RESET}"
+echo -e "${PRIMARY}██╔██╗ ██║██║   ██║███████╗   ██║   ██████╔╝███████║${RESET}"
+echo -e "${PRIMARY}██║╚██╗██║██║   ██║╚════██║   ██║   ██╔══██╗██╔══██║${RESET}"
+echo -e "${PRIMARY}██║ ╚████║╚██████╔╝███████║   ██║   ██║  ██║██║  ██║${RESET}"
+echo -e "${PRIMARY}╚═╝  ╚═══╝ ╚═════╝ ╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝${RESET}"
 echo -e ""
 echo -e "${SEP}═══════════════════════════════════════════════════════${RESET}"
-echo -e "${TITLE}                 NOVA-XTUNNEL MANAGER                  ${RESET}"
+echo -e "${PRIMARY}                 NOVA-XTUNNEL MANAGER                  ${RESET}"
 echo -e "${SEP}═══════════════════════════════════════════════════════${RESET}"
-echo -e "•${LABEL}Tg:${RESET}${TEXT}t.me/LaboKingfreesurf${RESET} •${LABEL}YT:${RESET}${TEXT}youtube.com/labokingfreesurf{RESET}"
-echo -e "•${LABEL}WA:${RESET}${TEXT} +237 676 250 509     ${RESET}•${LABEL}TK:${RESET}${TEXT}@labokingfreesurf${RESET}"
-echo -e "•${LABEL}Mail:${RESET}${TEXT} contact.nostra237@gmail.com${RESET}"
+echo -e "•${LABEL}Tg:${RESET}${BLUE}t.me/LaboKingfreesurf${RESET} •${LABEL}YT:${RESET}${BLUE}youtube.com/@labokingfreesurf{RESET}"
+echo -e "•${LABEL}WA:${RESET}${BLUE} +237 676 250 509     ${RESET}•${LABEL}TK:${RESET}${BLUE}@labokingfreesurf${RESET}"
+echo -e "•${LABEL}Mail:${RESET}${BLUE} contact.nostra237@gmail.com${RESET}"
 echo -e "${SEP}═══════════════════════════════════════════════════════${RESET}"
-echo -e "${TEXT}        Welcome to NOSTRA VPN Server Manager.${RESET}"
-echo -e "${TEXT}           Type ${ACTION}'menu'${RESET}${TEXT} to open the panel.${RESET}"
+echo -e "${BLUE}        Welcome to NOSTRA VPN Server Manager.${RESET}"
+echo -e "${BLUE}           Type ${ACTION}'menu'${RESET}${BLUE} to open the panel.${RESET}"
 echo -e "${SEP}═══════════════════════════════════════════════════════${RESET}"
 EOF
 

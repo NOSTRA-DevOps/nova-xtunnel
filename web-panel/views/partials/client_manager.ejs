@@ -149,25 +149,27 @@
             <% }) %>
           </div>
           <pre id="copy-<%= c.id %>" style="display:none;">
-╔═════════════════════════════════╗
+╔═══════════════════════════════╗
      🌐  𝗡𝗢𝗩𝗔 𝗫𝗧𝗨𝗡𝗡𝗘𝗟  🌐
-╚═════════════════════════════════╝
+╚═══════════════════════════════╝
 
 👤 <%= c.type === 'ssh' ? t('form.username') : t('common.password') %> : `<%= c.identifier %>`
 <% if (c.type === 'ssh' && c.password) { -%>
 🔑 <%= t('common.password') %> : `<%= c.password %>`
 <% } -%>
 <% (c.connectionInfo || []).forEach(section => { -%>
+<% if (section.title !== 'Identifiants') { -%>
 
 ⚙️ 𝗠𝗼𝗱𝗲 : <%= section.title %>
-──────────────────────────────────
+────────────────────────────────
 <% section.lines.forEach(line => { -%>
-👉 `<%= line %>`
+👉 <%= line %>
 <% }) -%>
+<% } -%>
 <% }) -%>
 
-⚡ 𝘚𝘵𝘢𝘵𝘶𝘴: 𝘈𝘤𝘵𝘪𝘧 |@Labokingfreesurf
-──────────────────────────────────
+⚡️𝘚𝘵𝘢𝘵𝘶𝘴: 𝘈𝘤𝘵𝘪𝘧 | @Labokingfreesurf
+────────────────────────────────
 </pre>
 
         </td>
