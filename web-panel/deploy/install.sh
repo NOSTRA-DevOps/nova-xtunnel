@@ -6,7 +6,7 @@
 # non-interactive/CI use:
 #
 #   sudo bash deploy/install.sh \
-#     --domain panel.tondomaine.com --tls-mode nginx --port 8443 --app-port 3000 \
+#     --domain panel.tondomaine.com --tls-mode nginx --port 2045 --app-port 3000 \
 #     --admin-user admin --admin-pass 'S3cur3Pass!' --secret "$(openssl rand -hex 32)"
 #
 set -e
@@ -33,7 +33,7 @@ read_tty() {
 }
 
 # ---------- Defaults ----------
-PUBLIC_PORT=8443
+PUBLIC_PORT=2045
 APP_PORT=3000
 DOMAIN=""
 TLS_MODE=""     # "nginx" | "node"
@@ -75,14 +75,14 @@ fi
 if [[ -z "$TLS_MODE" ]]; then
   echo
   echo " How would you like to manage the TLS certificate for $DOMAIN?"
-  echo "   1) Nginx in reverse proxy (recommended) — Nginx manages the certificate on a dedicated port"
+  echo "   1) Nginx in reverse proxy  — Nginx manages the certificate on a dedicated port"
   echo "      and forwards traffic to the Node application internally."
-  echo "   2) The Node panel manages the certificate itself — no Nginx,"
+  echo "   2) The Node panel manages the certificate itself (recommended)— no Nginx,"
   echo "      the application listens directly on HTTPS on the public port."
-  read_tty -r -p " Choice [1/2] (default 1): " tls_choice
-  case "${tls_choice:-1}" in
-    2) TLS_MODE="node" ;;
-    *) TLS_MODE="nginx" ;;
+  read_tty -r -p " Choice [1/2] (default 2): " tls_choice
+  case "${tls_choice:-2}" in
+    *) TLS_MODE="node" ;;
+    1) TLS_MODE="nginx" ;;
   esac
 fi
 
