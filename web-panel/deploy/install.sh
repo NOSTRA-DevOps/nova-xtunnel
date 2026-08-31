@@ -1,18 +1,18 @@
 #!/bin/bash
-# NOVA XTUNNEL - Web Panel deployment script
+# NOVA X Tunnel - Web Panel deployment script
 #
 # Fully interactive: asks for the domain, the TLS mode, admin username/password,
 # ports and a session secret key. Every value can also be passed as a flag for
 # non-interactive/CI use:
 #
 #   sudo bash deploy/install.sh \
-#     --domain panel.tondomaine.com --tls-mode nginx --port 2045 --app-port 3000 \
+#     --domain panel.tondomaine.com --tls-mode nginx --port 8443 --app-port 3000 \
 #     --admin-user admin --admin-pass 'S3cur3Pass!' --secret "$(openssl rand -hex 32)"
 #
 set -e
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Erreur : ce script doit être exécuté en root (sudo)."
+  echo "Error: This script must be run as root." >&2
   exit 1
 fi
 
@@ -33,7 +33,7 @@ read_tty() {
 }
 
 # ---------- Defaults ----------
-PUBLIC_PORT=2045
+PUBLIC_PORT=8443
 APP_PORT=3000
 DOMAIN=""
 TLS_MODE=""     # "nginx" | "node"
@@ -53,12 +53,12 @@ while [[ $# -gt 0 ]]; do
     --admin-pass) ADMIN_PASS="$2"; shift 2 ;;
     --secret) SECRET="$2"; shift 2 ;;
     --yes) ASSUME_YES=true; shift ;;
-    *) echo "Argument inconnu: $1"; exit 1 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 echo "=================================================="
-echo " NOVA XTUNNEL —  Web panel Installation"
+echo " NOVA XTunnel — Installation of the Web Panel"
 echo "=================================================="
 echo
 
@@ -66,19 +66,19 @@ echo
 
 if [[ -z "$DOMAIN" ]]; then
   while true; do
-    read_tty -r -p "👉 The novaxpanel service does not exist yet. Domain name for the panel (e.g., panel.yourdomain.com): " DOMAIN
+    read_tty -r -p "👉 Domain name for the panel (e.g., panel.yourdomain.com): " DOMAIN
     [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]] && break
-    echo "   ⚠️ Invalid domain format; please try again."
+    echo "   ⚠️ Invalid domain format, please try again."
   done
 fi
 
 if [[ -z "$TLS_MODE" ]]; then
   echo
-  echo " How do you want to manage the TLS certificate of $DOMAIN ?"
-  echo "   1) Nginx as a reverse proxy (recommended) — Nginx handles the certificate on a port"
-  echo "      dedicated and forwards traffic to the Node application internally."
-  echo "   2) The Node panel manages the domain certificate itself — no Nginx,"
-  echo "      the application listens directly via HTTPS on the public port."
+  echo " How would you like to manage the TLS certificate for $DOMAIN?"
+  echo "   1) Nginx in reverse proxy (recommended) — Nginx manages the certificate on a dedicated port"
+  echo "      and forwards traffic to the Node application internally."
+  echo "   2) The Node panel manages the certificate itself — no Nginx,"
+  echo "      the application listens directly on HTTPS on the public port."
   read_tty -r -p " Choice [1/2] (default 1): " tls_choice
   case "${tls_choice:-1}" in
     2) TLS_MODE="node" ;;
@@ -86,11 +86,11 @@ if [[ -z "$TLS_MODE" ]]; then
   esac
 fi
 
-read_tty -r -p "👉 Public port (HTTPS) [$PUBLIC_PORT]: " input
+read_tty -r -p "👉 Port public (HTTPS) [$PUBLIC_PORT]: " input
 PUBLIC_PORT="${input:-$PUBLIC_PORT}"
 
 if [[ "$TLS_MODE" == "nginx" ]]; then
-  read_tty -r -p "👉 Internal port of the Node application [$APP_PORT]: " input
+  read_tty -r -p "👉 Internal port for the Node application [$APP_PORT]: " input
   APP_PORT="${input:-$APP_PORT}"
 else
   APP_PORT="$PUBLIC_PORT" # node listens directly on the public port, no separate internal port
@@ -105,7 +105,7 @@ if [[ "$TLS_MODE" == "nginx" && "$PUBLIC_PORT" == "$APP_PORT" ]]; then
   echo "❌ The public port and the internal port must be different."; exit 1
 fi
 if ss -ltn 2>/dev/null | grep -q ":$PUBLIC_PORT "; then
-  echo "⚠️  The port $PUBLIC_PORT seems to be already in use on this server. Continue only if you know what you are doing."
+  echo "⚠️  The port $PUBLIC_PORT appears to be already in use on this server. Continue only if you know what you are doing."
   $ASSUME_YES || read_tty -r -p "   Continue anyway? (y/N) " c; [[ "$c" =~ ^[yY] ]] || exit 1
 fi
 
@@ -116,7 +116,7 @@ fi
 
 if [[ -z "$ADMIN_PASS" ]]; then
   while true; do
-    read_tty -r -s -p "👉 Admin password (leave blank to generate a strong one automatically): " ADMIN_PASS
+    read_tty -r -s -p "👉 Admin password (leave empty to generate a strong one automatically): " ADMIN_PASS
     echo
     if [[ -z "$ADMIN_PASS" ]]; then
       ADMIN_PASS=$(openssl rand -base64 14 | tr -d '=+/')
@@ -135,7 +135,7 @@ if [[ -z "$ADMIN_PASS" ]]; then
 fi
 
 if [[ -z "$SECRET" ]]; then
-  read_tty -r -p "👉 Session secret (leave blank to generate one automatically): " SECRET
+  read_tty -r -p "👉 Session secret (leave empty to generate one automatically): " SECRET
   [[ -z "$SECRET" ]] && SECRET=$(openssl rand -hex 32)
 fi
 
@@ -212,19 +212,38 @@ else
 fi
 
 # ---------- 4. npm install ----------
-echo "📦 Installation of Node dependencies..."
+echo "📦 Installation of Node.js dependencies..."
 npm install --omit=dev
 
-# ---------- 5. TLS certificate (Cloudflare-aware) ----------
-obtain_certificate_interactive "$DOMAIN" || {
-  echo "❌ Unable to obtain a TLS certificate for $DOMAIN."
+# ---------- 5. systemd service + `novaxpanel` CLI - installed EARLY, before the TLS
+# certificate step below (a common failure point: DNS not propagated yet, wrong Cloudflare
+# token, Let's Encrypt rate limits...). If that step fails, `set -e` stops the script right
+# there - but by then .env already exists (step 3) while NEITHER the systemd service NOR
+# the `novaxpanel` command existed yet in the old step order, even though the error message
+# tells the user to run `novaxpanel domain` to retry. Creating both here first means that
+# recovery path actually works: the service exists (it just won't start successfully until
+# a valid cert is in place) and `novaxpanel` is on PATH to fix it without re-running this
+# whole script.
+echo "⚙️  Configuration of the systemd service..."
+sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
+    "$PROJECT_DIR/deploy/novaxpanel.service.template" > /etc/systemd/system/novaxpanel.service
+systemctl daemon-reload
 
-  echo "   Please resolve the DNS/Cloudflare issue and then use 'novaxpanel domain' to try again."
+echo "⚙️  Installation of the 'novaxpanel' command (3x-ui maintenance panel)..."
+sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
+    "$PROJECT_DIR/deploy/novaxpanel-cli.sh" > /usr/local/bin/novaxpanel
+chmod +x /usr/local/bin/novaxpanel
+
+# ---------- 6. TLS certificate (Cloudflare-aware) ----------
+obtain_certificate_interactive "$DOMAIN" || {
+  echo "❌ Impossible to obtain a TLS certificate for $DOMAIN."
+  echo "   The service and the 'novaxpanel' command are already installed: please fix the issue"
+  echo "   DNS/Cloudflare then run 'novaxpanel domain' (or 'novaxpanel tls-mode') to try again."
   exit 1
 }
 
 if [[ "$TLS_MODE" == "nginx" ]]; then
-  # ---------- 6a. Nginx site on the dedicated port ----------
+  # ---------- 7. Nginx site on the dedicated port ----------
   echo "📝 Configuration Nginx (dedicated port $PUBLIC_PORT)..."
   sed -e "s|__DOMAIN__|$DOMAIN|g" \
       -e "s|__PUBLIC_PORT__|$PUBLIC_PORT|g" \
@@ -237,15 +256,11 @@ fi
 # In TLS_MODE=node there is nothing to configure here: server.js reads CERT_PATH/KEY_PATH
 # straight from .env and listens directly in HTTPS on PORT (== PUBLIC_PORT).
 
-# ---------- 7. systemd service for the panel ----------
-echo "⚙️  Configuration of the systemd service..."
-sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-    "$PROJECT_DIR/deploy/novaxpanel.service.template" > /etc/systemd/system/novaxpanel.service
-systemctl daemon-reload
+# ---------- 8. Start the panel now that a valid certificate is in place ----------
 systemctl enable --now novaxpanel
 systemctl restart novaxpanel
 
-# ---------- 8. Certbot renewal hooks ----------
+# ---------- 9. Certbot renewal hooks ----------
 # Pre-hook stops HAProxy (needed if issuing/renewing via HTTP-01 on 80/443, harmless otherwise).
 # Post-hook restarts HAProxy AND the panel itself (Node caches the cert in memory at startup,
 # so TLS_MODE=node needs a restart after every renewal to pick up the fresh certificate).
@@ -262,15 +277,9 @@ if command -v nginx >/dev/null 2>&1; then systemctl reload nginx 2>/dev/null || 
 EOF
 chmod +x /etc/letsencrypt/renewal-hooks/post/novaxpanel-restart-panel.sh
 
-# ---------- 9. Install the `novaxpanel` maintenance CLI (update/uninstall/change domain, etc.) ----------
-echo "⚙️  Installation of the 'novaxpanel' command (3x-ui style maintenance panel)..."
-sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-    "$PROJECT_DIR/deploy/novaxpanel-cli.sh" > /usr/local/bin/novaxpanel
-chmod +x /usr/local/bin/novaxpanel
-
 echo
 echo "=================================================="
-echo " ✅ Deployment completed !"
+echo " ✅ Installation completed !"
 echo "    Panel accessible at : https://$DOMAIN:$PUBLIC_PORT"
 echo "    Admin username       : $ADMIN_USER"
 echo "    Admin password       : $ADMIN_PASS"

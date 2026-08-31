@@ -5209,28 +5209,32 @@ nginx_proxy_menu() {
 
 install_xui_panel() {
     clear; show_banner
-    echo -e "${C_BOLD}${C_PURPLE}--- 🚀 Install X-UI Panel ---${C_RESET}"
-    echo -e "\nThis will download and run the official installation script for X-UI."
+    echo -e "${C_BOLD}${C_PURPLE}--- 🚀 Install 3X-UI Panel ---${C_RESET}"
+    echo -e "\nThis will download and run the official installation script for 3X-UI"
+    echo -e "(mhsanaei/3x-ui - the actively maintained fork; the original alireza0/x-ui"
+    echo -e "repository is no longer updated)."
     echo -e "Choose an installation option:\n"
-    echo -e "Choose an installation option:\n"
-    printf "  ${C_GREEN}[ 1]${C_RESET} %-40s\n" "Install the latest version of X-UI"
-    printf "  ${C_GREEN}[ 2]${C_RESET} %-40s\n" "Install a specific version of X-UI"
+    printf "  ${C_GREEN}[ 1]${C_RESET} %-40s\n" "Install the latest version of 3X-UI"
+    printf "  ${C_GREEN}[ 2]${C_RESET} %-40s\n" "Install a specific version of 3X-UI"
     echo -e "\n  ${C_RED}[ 0]${C_RESET} ❌ Cancel Installation"
     echo
     read -p "👉 Select an option: " choice
     case $choice in
         1)
             echo -e "\n${C_BLUE}⚙️ Installing the latest version...${C_RESET}"
-            bash <(curl -Ls https://raw.githubusercontent.com/alireza0/x-ui/master/install.sh)
+            bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
             ;;
         2)
-            read -p "👉 Enter the version to install (e.g., 1.8.0): " version
+            read -p "👉 Enter the version to install (e.g., v2.3.9): " version
             if [[ -z "$version" ]]; then
                 echo -e "\n${C_RED}❌ Version number cannot be empty.${C_RESET}"
                 return
             fi
             echo -e "\n${C_BLUE}⚙️ Installing version ${C_YELLOW}$version...${C_RESET}"
-            VERSION=$version bash <(curl -Ls "https://raw.githubusercontent.com/alireza0/x-ui/$version/install.sh") "$version"
+            # mhsanaei/3x-ui always serves install.sh from master and takes the desired
+            # release tag as an argument (unlike the old alireza0/x-ui repo, which used a
+            # per-version branch/tag path for install.sh itself).
+            bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh) "$version"
             ;;
         0)
             echo -e "\n${C_YELLOW}❌ Installation cancelled.${C_RESET}"
@@ -5241,16 +5245,17 @@ install_xui_panel() {
     esac
 }
 
+
 uninstall_xui_panel() {
     clear; show_banner
-    echo -e "${C_BOLD}${C_PURPLE}--- 🗑️ Uninstall X-UI Panel ---${C_RESET}"
+    echo -e "${C_BOLD}${C_PURPLE}--- 🗑️ Uninstall 3X-UI Panel ---${C_RESET}"
     if ! command -v x-ui &> /dev/null; then
-        echo -e "\n${C_YELLOW}ℹ️ X-UI does not appear to be installed.${C_RESET}"
+        echo -e "\n${C_YELLOW}ℹ️ 3X-UI does not appear to be installed.${C_RESET}"
         return
     fi
-    read -p "👉 Are you sure you want to thoroughly uninstall X-UI? (y/n): " confirm
+    read -p "👉 Are you sure you want to thoroughly uninstall 3X-UI? (y/n): " confirm
     if [[ "$confirm" == "y" ]]; then
-        echo -e "\n${C_BLUE}⚙️ Running the default X-UI uninstaller first...${C_RESET}"
+        echo -e "\n${C_BLUE}⚙️ Running the default 3X-UI uninstaller first...${C_RESET}"
         x-ui uninstall >/dev/null 2>&1
         echo -e "\n${C_BLUE}🧹 Performing a full cleanup to ensure complete removal...${C_RESET}"
         echo " - Stopping and disabling x-ui service..."
