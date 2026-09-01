@@ -63,21 +63,24 @@ cmd_status() {
   sep_double
   print_header "                    NOVA XTUNNEL — Status of the web panel"
   sep_double
-  local tls_mode; tls_mode=$(env_get TLS_MODE)
+  local tls_mode
+  tls_mode=$(env_get TLS_MODE)
   echo -e "${C_WHITE} Domain         :${NC} $(env_get DOMAIN)"
   echo -e "${C_WHITE} TLS Mode       :${NC} $([[ "$tls_mode" == "node" ]] && echo "${C_GREEN}Direct Node (no Nginx)${NC}" || echo "${C_BLUE}Nginx reverse proxy${NC}")"
   echo -e "${C_WHITE} Public Port    :${NC} $(env_get PUBLIC_PORT)"
   [[ "$tls_mode" != "node" ]] && echo -e "${C_WHITE} Internal Port  :${NC} $(env_get PORT)"
   echo -e "${C_WHITE} URL            :${NC} ${C_GREEN}https://$(env_get DOMAIN):$(env_get PUBLIC_PORT)${NC}"
   echo
-  local service_status=$(systemctl is-active novaxpanel)
+  local service_status
+  service_status=$(systemctl is-active novaxpanel)
   if [[ "$service_status" == "active" ]]; then
     echo -e " Service Node   : ${C_GREEN}✅ actif${NC}"
   else
     echo -e " Service Node   : ${C_RED}❌ stopped${NC}"
   fi
   if [[ "$tls_mode" != "node" ]]; then
-    local nginx_status=$(systemctl is-active nginx)
+    local nginx_status
+    nginx_status=$(systemctl is-active nginx)
     if [[ "$nginx_status" == "active" ]]; then
       echo -e " Nginx          : ${C_GREEN}✅ actif${NC}"
     else
@@ -93,7 +96,9 @@ cmd_logs() {
   journalctl -u novaxpanel -f --no-pager -n 100
 }
 
-cmd_restart() { restart_panel; }
+cmd_restart() { 
+  restart_panel
+}
 
 cmd_update() {
   sep_double
@@ -122,7 +127,7 @@ cmd_change_domain() {
   old_domain=$(env_get DOMAIN)
   tls_mode=$(env_get TLS_MODE)
   echo -e "${C_WHITE}Current domain :${NC} ${C_YELLOW}$old_domain${NC}"
-  read -r -p "$(echo -e ${C_GREEN}👉 New domain name: ${NC})" new_domain
+  read -r -p "$(echo -e "${C_GREEN}👉 New domain name: ${NC}")" new_domain
   [[ -z "$new_domain" ]] && { print_warning "Cancelled."; return; }
 
   obtain_certificate_interactive "$new_domain" || { print_error "Failed, domain not changed."; return 1; }
@@ -132,7 +137,8 @@ cmd_change_domain() {
     env_set KEY_PATH "/etc/letsencrypt/live/$new_domain/privkey.pem"
   else
     local public_port app_port
-    public_port=$(env_get PUBLIC_PORT); app_port=$(env_get PORT)
+    public_port=$(env_get PUBLIC_PORT)
+    app_port=$(env_get PORT)
     sed -e "s|__DOMAIN__|$new_domain|g" \
         -e "s|__PUBLIC_PORT__|$public_port|g" \
         -e "s|__APP_PORT__|$app_port|g" \
@@ -151,13 +157,14 @@ cmd_change_port() {
   sep_double
   print_header "                    CHANGE PORTS"
   sep_double
-  local tls_mode; tls_mode=$(env_get TLS_MODE)
+  local tls_mode
+  tls_mode=$(env_get TLS_MODE)
 
   if [[ "$tls_mode" == "node" ]]; then
     local current new
     current=$(env_get PUBLIC_PORT)
     echo -e "${C_WHITE}Current public port (Direct Node) :${NC} ${C_YELLOW}$current${NC}"
-    read -r -p "$(echo -e ${C_GREEN}👉 New public port: ${NC})" new
+    read -r -p "$(echo -e "${C_GREEN}👉 New public port: ${NC}")" new
     new="${new:-$current}"
     if ! [[ "$new" =~ ^[0-9]+$ ]] || (( new < 1 || new > 65535 )); then
       print_error "Invalid port: $new"
@@ -172,11 +179,12 @@ cmd_change_port() {
   fi
 
   local current_public current_app new_public new_app
-  current_public=$(env_get PUBLIC_PORT); current_app=$(env_get PORT)
+  current_public=$(env_get PUBLIC_PORT)
+  current_app=$(env_get PORT)
   echo -e "${C_WHITE}Current public port  :${NC} ${C_YELLOW}$current_public${NC}"
   echo -e "${C_WHITE}Current internal port :${NC} ${C_YELLOW}$current_app${NC}"
-  read -r -p "$(echo -e ${C_GREEN}👉 New public port (empty = unchanged): ${NC})" new_public
-  read -r -p "$(echo -e ${C_GREEN}👉 New internal port (empty = unchanged): ${NC})" new_app
+  read -r -p "$(echo -e "${C_GREEN}👉 New public port (empty = unchanged): ${NC}")" new_public
+  read -r -p "$(echo -e "${C_GREEN}👉 New internal port (empty = unchanged): ${NC}")" new_app
   new_public="${new_public:-$current_public}"
   new_app="${new_app:-$current_app}"
 
@@ -191,7 +199,8 @@ cmd_change_port() {
     return 1
   fi
 
-  local domain; domain=$(env_get DOMAIN)
+  local domain
+  domain=$(env_get DOMAIN)
   sed -e "s|__DOMAIN__|$domain|g" \
       -e "s|__PUBLIC_PORT__|$new_public|g" \
       -e "s|__APP_PORT__|$new_app|g" \
@@ -213,8 +222,8 @@ cmd_change_admin_username() {
   sep_short
   node "$PROJECT_DIR/deploy/admin-tool.js" list
   sep_short
-  read -r -p "$(echo -e ${C_GREEN}👉 Username to rename: ${NC})" old_user
-  read -r -p "$(echo -e ${C_GREEN}👉 New username: ${NC})" new_user
+  read -r -p "$(echo -e "${C_GREEN}👉 Username to rename: ${NC}")" old_user
+  read -r -p "$(echo -e "${C_GREEN}👉 New username: ${NC}")" new_user
   [[ -z "$old_user" || -z "$new_user" ]] && { print_warning "Cancelled."; return; }
   node "$PROJECT_DIR/deploy/admin-tool.js" set-username "$old_user" "$new_user"
   sep_short
@@ -228,9 +237,10 @@ cmd_change_admin_password() {
   sep_short
   node "$PROJECT_DIR/deploy/admin-tool.js" list
   sep_short
-  read -r -p "$(echo -e ${C_GREEN}👉 Username: ${NC})" user
+  read -r -p "$(echo -e "${C_GREEN}👉 Username: ${NC}")" user
   [[ -z "$user" ]] && { print_warning "Cancelled."; return; }
-  read -r -s -p "$(echo -e ${C_GREEN}👉 New password (empty = automatically generated): ${NC})" pass; echo
+  read -r -s -p "$(echo -e "${C_GREEN}👉 New password (empty = automatically generated): ${NC}")" pass
+  echo
   if [[ -z "$pass" ]]; then
     pass=$(openssl rand -base64 14 | tr -d '=+/')
     echo -e "${C_YELLOW}🔑 New password generated: ${C_GREEN}$pass${NC}"
@@ -244,9 +254,10 @@ cmd_regen_secret() {
   print_header "                    REGENERATE SESSION SECRET"
   sep_double
   print_warning "Regenerating the session secret will invalidate all existing sessions, logging out all users."
-  read -r -p "$(echo -e ${C_YELLOW}Continue ? (y/N) ${NC})" c
+  read -r -p "$(echo -e "${C_YELLOW}Continue ? (y/N) ${NC}")" c
   [[ "$c" =~ ^[yY] ]] || { print_warning "Cancelled."; return; }
-  local secret; secret=$(openssl rand -hex 32)
+  local secret
+  secret=$(openssl rand -hex 32)
   env_set SESSION_SECRET "$secret"
   restart_panel
   print_success "New session secret generated and applied."
@@ -281,7 +292,7 @@ cmd_restore() {
   select f in "$dir"/*.tar.gz "Cancel"; do
     [[ "$f" == "Cancel" || -z "$f" ]] && { print_warning "Restore cancelled."; return; }
     print_warning "This will overwrite the current config (.env) and database."
-    read -r -p "$(echo -e ${C_YELLOW}Continue ? (y/N) ${NC})" c
+    read -r -p "$(echo -e "${C_YELLOW}Continue ? (y/N) ${NC}")" c
     [[ "$c" =~ ^[yY] ]] || { print_warning "Restore cancelled."; return; }
     tar -xzf "$f" -C "$PROJECT_DIR"
     restart_panel
@@ -295,16 +306,19 @@ cmd_tls_mode() {
   sep_double
   print_header "                    TLS MODE SWITCH"
   sep_double
-  local current; current=$(env_get TLS_MODE)
-  local domain; domain=$(env_get DOMAIN)
-  local public_port; public_port=$(env_get PUBLIC_PORT)
+  local current
+  current=$(env_get TLS_MODE)
+  local domain
+  domain=$(env_get DOMAIN)
+  local public_port
+  public_port=$(env_get PUBLIC_PORT)
   echo -e "${C_WHITE}Current TLS mode :${NC} $([[ "$current" == "node" ]] && echo "${C_GREEN}Node direct${NC}" || echo "${C_BLUE}Nginx reverse proxy${NC}")"
   sep_short
   echo -e "  ${BOLD}${C_RED}1)${NC} ${C_BLUE}Nginx reverse proxy${NC}"
   echo -e "  ${BOLD}${C_RED}2)${NC} ${C_GREEN}Node direct — Let's Encrypt${NC} (auto, manage Cloudflare DNS-01)"
   echo -e "  ${BOLD}${C_RED}3)${NC} ${C_YELLOW}Node direct — custom certificate${NC} (ex: Cloudflare Origin Certificate)"
   sep_short
-  read -r -p "$(echo -e ${C_GREEN}Choice [1/2/3]: ${NC})" choice
+  read -r -p "$(echo -e "${C_GREEN}Choice [1/2/3]: ${NC}")" choice
 
   if [[ "$choice" == "2" && "$current" != "node" ]]; then
     obtain_certificate_interactive "$domain" || { print_error "Échec, mode inchangé."; return 1; }
@@ -325,8 +339,8 @@ cmd_tls_mode() {
     echo "   Generate it in the Cloudflare dashboard: SSL/TLS > Origin Certificates > Create a Certificate,"
     echo "   then remember to set the Cloudflare SSL/TLS mode for the domain to 'Full (strict)'."
     sep_short
-    read -r -p "$(echo -e ${C_GREEN}👉 Path to the certificate (fullchain/cert .pem): ${NC})" custom_cert
-    read -r -p "$(echo -e ${C_GREEN}👉 Path to the private key (.pem/.key): ${NC})" custom_key
+    read -r -p "$(echo -e "${C_GREEN}👉 Path to the certificate (fullchain/cert .pem): ${NC}")" custom_cert
+    read -r -p "$(echo -e "${C_GREEN}👉 Path to the private key (.pem/.key): ${NC}")" custom_key
     if [[ ! -f "$custom_cert" || ! -f "$custom_key" ]]; then
       print_error "File not found. Please copy the certificate and key to this server first, then try again."
       return 1
@@ -348,7 +362,7 @@ cmd_tls_mode() {
       print_info "Installing Nginx..."
       apt-get update -y && apt-get install -y nginx
     fi
-    read -r -p "$(echo -e ${C_GREEN}👉 Internal port for Node application [3000]: ${NC})" app_port
+    read -r -p "$(echo -e "${C_GREEN}👉 Internal port for Node application [3000]: ${NC}")" app_port
     app_port="${app_port:-3000}"
     sed -e "s|__DOMAIN__|$domain|g" \
         -e "s|__PUBLIC_PORT__|$public_port|g" \
@@ -375,11 +389,13 @@ cmd_uninstall() {
   echo "   associated TLS certificate, and remove the 'novaxpanel' command."
   echo -e "   ${C_GREEN}The terminal 'menu' panel and your SSH/ZiVPN accounts will NOT be affected.${NC}"
   sep_short
-  read -r -p "$(echo -e ${C_RED}Confirm the uninstallation? (type 'oui'): ${NC})" c
+  read -r -p "$(echo -e "${C_RED}Confirm the uninstallation? (type 'oui'): ${NC}")" c
   [[ "$c" == "oui" ]] || { print_warning "Cancelled."; return; }
 
-  local domain; domain=$(env_get DOMAIN)
-  local tls_mode; tls_mode=$(env_get TLS_MODE)
+  local domain
+  domain=$(env_get DOMAIN)
+  local tls_mode
+  tls_mode=$(env_get TLS_MODE)
 
   systemctl stop novaxpanel 2>/dev/null || true
   systemctl disable novaxpanel 2>/dev/null || true
@@ -395,12 +411,12 @@ cmd_uninstall() {
   rm -f /etc/letsencrypt/renewal-hooks/post/novaxpanel-start-haproxy.sh
   rm -f /etc/letsencrypt/renewal-hooks/post/novaxpanel-restart-panel.sh
 
-  read -r -p "$(echo -e ${C_YELLOW}Delete the TLS certificate for $domain as well? (y/N) ${NC})" c2
+  read -r -p "$(echo -e "${C_YELLOW}Delete the TLS certificate for $domain as well? (y/N) ${NC}")" c2
   if [[ "$c2" =~ ^[yY] ]]; then
     certbot delete --cert-name "$domain" --non-interactive 2>/dev/null || true
   fi
 
-  read -r -p "$(echo -e ${C_YELLOW}Delete the data (SQLite database, .env, node_modules) as well? (y/N) ${NC})" c3
+  read -r -p "$(echo -e "${C_YELLOW}Delete the data (SQLite database, .env, node_modules) as well? (y/N) ${NC}")" c3
   if [[ "$c3" =~ ^[yY] ]]; then
     rm -rf "$PROJECT_DIR/node_modules" "$PROJECT_DIR/.env" "$PROJECT_DIR/db/panel.sqlite3"
     print_info "🗑️  Data deleted."
@@ -434,7 +450,7 @@ show_menu() {
   echo -e " ${BOLD}${C_RED}13)${NC} ${C_RED}Uninstall web panel${NC}"
   echo -e "  ${BOLD}${C_RED}0)${NC} ${C_WHITE}Quit${NC}"
   sep_double
-  read -r -p "$(echo -e ${C_GREEN}Choice: ${NC})" choice
+  read -r -p "$(echo -e "${C_GREEN}Choice: ${NC}")" choice
   case "$choice" in
     1) cmd_status ;;
     2) cmd_logs ;;
@@ -471,7 +487,10 @@ case "$1" in
   restore) cmd_restore ;;
   uninstall) cmd_uninstall ;;
   "")
-    while true; do show_menu; read -r -p "$(echo -e ${C_BLUE}Press Enter to continue...${NC})" _; done
+    while true; do
+      show_menu
+      read -r -p "$(echo -e "${C_BLUE}Press Enter to continue...${NC}")" _
+    done
     ;;
   *)
     print_error "Unknown command: $1"
