@@ -1,5 +1,5 @@
 #!/bin/bash
-# NOVA XTUNNEL - shared TLS / Cloudflare helper functions.
+# NOVA X Tunnel - shared TLS / Cloudflare helper functions.
 # Sourced by deploy/install.sh and the novaxpanel maintenance CLI.
 # Assumes `set -e` is active in the caller unless noted otherwise.
 
@@ -10,8 +10,6 @@ CF_CREDENTIALS_FILE="$CF_CREDENTIALS_DIR/novaxpanel-cloudflare.ini"
 
 # ---------- Cloudflare detection ----------
 
-# Returns 0 (true) if $1 (a domain) currently resolves to an IP that belongs to
-# Cloudflare's published ranges (i.e. the domain is proxied / "orange cloud").
 domain_is_behind_cloudflare() {
   local domain="$1"
   local resolved_ip
@@ -49,7 +47,7 @@ ip_in_cidr() {
 
 issue_cert_standalone() {
   local domain="$1"
-  echo "🔐 Emitting certificate for $domain via HTTP-01 (standalone)..."
+  echo "🔐 Certificate emission for $domain via HTTP-01 (standalone)..."
 
   local haproxy_was_active=false
   if systemctl is-active --quiet haproxy 2>/dev/null; then
@@ -59,11 +57,15 @@ issue_cert_standalone() {
 
   if certbot certonly --standalone --non-interactive --agree-tos \
       --register-unsafely-without-email -d "$domain"; then
-    $haproxy_was_active && systemctl start haproxy
+    if [[ "$haproxy_was_active" == true ]]; then
+      systemctl start haproxy
+    fi
     return 0
   else
-    echo "⚠️  Failed to emit certificate (HTTP-01)."
-    $haproxy_was_active && systemctl start haproxy
+    echo "⚠️  failed to obtain certificate (HTTP-01)."
+    if [[ "$haproxy_was_active" == true ]]; then
+      systemctl start haproxy
+    fi
     return 1
   fi
 }
@@ -74,7 +76,7 @@ ensure_certbot_dns_cloudflare() {
   if python3 -c "import certbot_dns_cloudflare" >/dev/null 2>&1; then
     return 0
   fi
-  echo "📦 Installing certbot-dns-cloudflare plugin..."
+  echo "📦 Installation du plugin certbot-dns-cloudflare..."
   if command -v apt-get >/dev/null 2>&1; then
     apt-get install -y python3-certbot-dns-cloudflare 2>/dev/null && return 0
   fi
@@ -97,27 +99,40 @@ issue_cert_cloudflare_dns() {
   ensure_certbot_dns_cloudflare
   write_cloudflare_credentials "$token"
 
-  echo "🔐 Emitting certificate for $domain via DNS-01 (Cloudflare API)..."
+  echo "🔐 Certificate emission for $domain via DNS-01 (Cloudflare API)..."
   if certbot certonly --dns-cloudflare \
       --dns-cloudflare-credentials "$CF_CREDENTIALS_FILE" \
       --non-interactive --agree-tos --register-unsafely-without-email \
       -d "$domain"; then
     return 0
   else
-    echo "⚠️  Failed to emit certificate (DNS-01 Cloudflare). Check that the API token"
-    echo "    has the 'Zone:DNS:Edit' permission on the relevant zone."
+    echo "⚠️  failed to obtain certificate (DNS-01 Cloudflare). Check that the API token"
+    echo "    has the 'Zone:DNS:Edit' permission on the concerned zone."
     return 1
   fi
 }
 
 generate_self_signed_cert() {
-  local domain="$1"
-  local dir="/etc/letsencrypt/live/$domain"
-  echo "⚠️  Generating a self-signed certificate for $domain (browser warning expected)."
+  local target="$1"
+  local dir="/etc/letsencrypt/live/$target"
+  echo "⚠️  Generating a self-signed certificate for $target (browser warning expected)."
   mkdir -p "$dir"
+
+  # A modern browser/TLS client checks the Subject Alternative Name, not the legacy CN -
+  # and for an IP address it specifically needs an "IP:" SAN entry (a "DNS:" one, or CN
+  # alone, is silently ignored for IP targets by most clients). Build the right SAN
+  # depending on whether $target is an IP literal or an actual hostname.
+  local san
+  if [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    san="IP:$target"
+  else
+    san="DNS:$target"
+  fi
+
   openssl req -x509 -nodes -days 825 -newkey rsa:2048 \
     -keyout "$dir/privkey.pem" -out "$dir/fullchain.pem" \
-    -subj "/CN=$domain" >/dev/null 2>&1
+    -subj "/CN=$target" \
+    -addext "subjectAltName=$san" >/dev/null 2>&1
 }
 
 # Interactive helper: decides HOW to obtain a cert for $1 = domain, handling the
@@ -137,28 +152,28 @@ obtain_certificate_interactive() {
 
   if domain_is_behind_cloudflare "$domain"; then
     echo "=================================================="
-    echo " ☁️  This domain appears to be behind the Cloudflare proxy (orange cloud)."
+    echo " ☁️  This domain appears to be proxied by Cloudflare (orange cloud)."
     echo "    The standard HTTP-01 validation will fail while the proxy is active,"
     echo "    unless you temporarily disable it (DNS only / grey cloud)."
     echo "=================================================="
     echo " How would you like to obtain the TLS certificate ?"
-    echo "   1) DNS-01 challenge via a Cloudflare API token (domain remains proxified)"
-    echo "   2) Disable the Cloudflare proxy myself, then validate with standard HTTP-01"
+    echo "   1) DNS-01 challenge via a Cloudflare API token (domain remains proxied)"
+    echo "   2) Disable the Cloudflare proxy, then validate via standard HTTP-01"
     echo "   3) Use a self-signed certificate (not recommended, browser warning)"
-    read_tty -r -p "Choice [1/2/3] (default 1): " cf_choice
+    read -r -p "Choice [1/2/3] (default 1): " cf_choice
     cf_choice="${cf_choice:-1}"
 
     case "$cf_choice" in
       1)
-        read_tty -r -p "👉 Cloudflare API Token (permission Zone:DNS:Edit on the zone): " cf_token
+        read -r -p "👉 Cloudflare API Token (permission Zone:DNS:Edit on the zone): " cf_token
         [[ -z "$cf_token" ]] && { echo "Token required, aborting."; return 1; }
         issue_cert_cloudflare_dns "$domain" "$cf_token" && return 0
         return 1
         ;;
       2)
         echo "👉 Disable the proxy (orange cloud -> grey cloud) for $domain in the Cloudflare dashboard"
-        echo "   (DNS), wait a few minutes for propagation, then validate here."
-        read_tty -r -p "Press Enter once the proxy is disabled to continue..." _
+        echo "   (DNS), wait a few minutes for the change to propagate, then validate here."
+        read -r -p "Press Enter once the proxy is disabled to continue..." _
         issue_cert_standalone "$domain" && return 0
         return 1
         ;;

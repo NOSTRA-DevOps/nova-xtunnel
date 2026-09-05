@@ -9,21 +9,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Installing NOVA XTUNNEL Manager..."
+echo "Installing NOVA X Tunnel Manager..."
 
 # Install menu (copied from this repo, no external download needed)
 cp "$SCRIPT_DIR/menu.sh" /usr/local/bin/menu
 chmod +x /usr/local/bin/menu
 
-
-if [ -d "$SCRIPT_DIR/falconproxy" ]; then
-    mkdir -p /opt/novaxtunnel
-    rm -rf /opt/novaxtunnel/falconproxy
-    cp -r "$SCRIPT_DIR/falconproxy" /opt/novaxtunnel/falconproxy
-    chmod +x /opt/novaxtunnel/falconproxy/falconproxy /opt/novaxtunnel/falconproxy/falconproxyarm 2>/dev/null || true
-fi
-
-echo "Applying NOVA XTUNNEL SSH configuration..."
+echo "Applying NOVA X Tunnel SSH configuration..."
 
 SSHD_CONFIG="/etc/ssh/sshd_config"
 BACKUP="/etc/ssh/sshd_config.backup.$(date +%F-%H%M%S)"
@@ -31,7 +23,7 @@ BACKUP="/etc/ssh/sshd_config.backup.$(date +%F-%H%M%S)"
 # Backup current SSH config
 cp "$SSHD_CONFIG" "$BACKUP"
 
-# Install NOVA XTUNNEL SSH config (copied from this repo)
+# Install NOVA X Tunnel SSH config (copied from this repo)
 cp "$SCRIPT_DIR/ssh" "$SSHD_CONFIG"
 chmod 600 "$SSHD_CONFIG"
 
@@ -75,8 +67,9 @@ else
     echo "SSH config applied but service was not restarted automatically."
 fi
 
-# Run NOVA XTUNNEL setup
+# Run NOVA X Tunnel setup
 bash /usr/local/bin/menu --install-setup
+bash /opt/novaxtunnel/terminal-panel/nostra.sh
 
 echo "Installation complete!"
 echo "Type 'menu' to start."

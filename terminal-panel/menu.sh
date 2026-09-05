@@ -44,10 +44,6 @@ EDGE_PUBLIC_TLS_PORT="443"
 NGINX_INTERNAL_HTTP_PORT="8880"
 NGINX_INTERNAL_TLS_PORT="8443"
 HAPROXY_INTERNAL_DECRYPT_PORT="10443"
-DNSTT_SERVICE_FILE="/etc/systemd/system/dnstt.service"
-DNSTT_BINARY="/usr/local/bin/dnstt-server"
-DNSTT_KEYS_DIR="/etc/novaxtunnel/dnstt"
-DNSTT_CONFIG_FILE="$DB_DIR/dnstt_info.conf"
 DNS_INFO_FILE="$DB_DIR/dns_info.conf"
 UDP_CUSTOM_DIR="/root/udp"
 UDP_CUSTOM_SERVICE_FILE="/etc/systemd/system/udp-custom.service"
@@ -56,15 +52,6 @@ UDP_CUSTOM_RANGE_START="1"
 UDP_CUSTOM_RANGE_END="65535"
 UDP_CUSTOM_EXCLUDE_SINGLE_PORTS="53 5300"
 SSH_BANNER_FILE="/etc/bannerssh"
-FALCONPROXY_SERVICE_FILE="/etc/systemd/system/falconproxy.service"
-FALCONPROXY_BINARY="/usr/local/bin/falconproxy"
-FALCONPROXY_CONFIG_FILE="$DB_DIR/falconproxy_config.conf"
-# Dossier persistant (hors /usr/local/bin, donc jamais en conflit avec FALCONPROXY_BINARY
-# ci-dessus) contenant les binaires pré-compilés livrés avec le projet
-# (falconproxy, falconproxyarm[, VERSION]). C'est aussi là que vit une copie du code
-# original récupéré depuis le dépôt git. S'il existe, install_falcon_proxy l'utilise
-# directement au lieu de télécharger depuis GitHub.
-FALCONPROXY_BUNDLE_DIR="/opt/nova-x-tunnel/terminal-panel/falconproxy"
 
 # --- PY SOCKS/WS Proxy (legacy SSHPlus-style CONNECT tunnel, ported to Python 3) ---
 PYPROXY_DIR="$DB_DIR/pyproxy"
@@ -530,6 +517,58 @@ _ff_flush_dnat_to_port() {
     done < <(iptables -t nat -S PREROUTING 2>/dev/null | grep -- "--to-destination :${internal_port}$")
 }
 
+# Rebuilds ALL managed UDP DNAT rules (udp-custom + ZiVPN) together in a single pass,
+# sorted in ascending port order. This is what guarantees the two never overlap and never
+# leave stale/overlapping leftovers - it MUST be called (not each service's own private
+# flush-and-add-its-own-segments logic) any time EITHER protocol is installed, reconfigured,
+# or uninstalled, because a change to one directly affects how the other's range must be
+# split (e.g. udp-custom must carve a hole out of its own range for ZiVPN's, and should
+# reclaim that hole if ZiVPN gets uninstalled). Only ever reserves ZiVPN's range as an
+# exclusion for udp-custom while ZiVPN is ACTUALLY installed - not just "in case".
+_ff_rebuild_udp_dnat_rules() {
+    _ff_flush_dnat_to_port "$UDP_CUSTOM_LISTEN_PORT"
+    _ff_flush_dnat_to_port "$ZIVPN_LISTEN_PORT"
+
+    local iface
+    iface=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+    if [ -z "$iface" ]; then
+        echo -e "${C_YELLOW}⚠️ Could not detect default interface for IPTables redirection.${C_RESET}"
+        return
+    fi
+
+    local -a all_segments=()
+
+    if [ -f "$UDP_CUSTOM_SERVICE_FILE" ]; then
+        local _udpc_excl_args=() _p
+        for _p in $UDP_CUSTOM_EXCLUDE_SINGLE_PORTS; do
+            _udpc_excl_args+=("$_p" "$_p")
+        done
+        # Only reserve ZiVPN's range for exclusion while ZiVPN is actually installed -
+        # otherwise udp-custom correctly reclaims the full range.
+        [ -f "$ZIVPN_SERVICE_FILE" ] && _udpc_excl_args+=("$ZIVPN_RANGE_START" "$ZIVPN_RANGE_END")
+        local _seg
+        while read -r _seg; do
+            [ -z "$_seg" ] && continue
+            all_segments+=("${_seg% *} ${_seg#* } $UDP_CUSTOM_LISTEN_PORT")
+        done < <(_ff_split_range "$UDP_CUSTOM_RANGE_START" "$UDP_CUSTOM_RANGE_END" "${_udpc_excl_args[@]}")
+    fi
+
+    if [ -f "$ZIVPN_SERVICE_FILE" ]; then
+        all_segments+=("$ZIVPN_RANGE_START $ZIVPN_RANGE_END $ZIVPN_LISTEN_PORT")
+    fi
+
+    (( ${#all_segments[@]} == 0 )) && return
+
+    # Ascending numeric sort by range start, so the PREROUTING chain itself reads in
+    # increasing port order top-to-bottom - regardless of which order the two protocols
+    # happened to be installed/reinstalled in over time.
+    local rs re rp
+    while IFS=' ' read -r rs re rp; do
+        [ -z "$rs" ] && continue
+        check_and_open_firewall_udp_range "$rs" "$re" "$rp"
+    done < <(printf '%s\n' "${all_segments[@]}" | sort -n -k1,1)
+}
+
 # Opens/redirects an entire public UDP range towards a single internal listen port.
 # Usage: check_and_open_firewall_udp_range <range_start> <range_end> <internal_port>
 check_and_open_firewall_udp_range() {
@@ -565,6 +604,25 @@ _ff_ranges_overlap() {
     [ "$a1" -le "$b2" ] && [ "$b1" -le "$a2" ]
 }
 
+
+# Formats a raw byte count as a human-readable string with an auto-scaled unit
+# (KB -> MB -> GB -> TB -> PB), matching the web panel's fmtData() logic so both panels
+# read consistently. Without this, a small usage (a few hundred KB or a couple MB) would
+# round down to "0.0 GB" when forced into a fixed GB-only display and look like nothing
+# was used at all.
+_ff_fmt_bytes() {
+    local bytes="$1"
+    awk -v b="$bytes" 'BEGIN {
+        split("KB MB GB TB PB", units, " ");
+        val = b / 1024;
+        if (val < 0) val = 0;
+        unit_i = 1;
+        while (val >= 1024 && unit_i < 5) { val /= 1024; unit_i++; }
+        if (val < 10) printf "%.2f %s", val, units[unit_i];
+        else if (val < 100) printf "%.1f %s", val, units[unit_i];
+        else printf "%.0f %s", val, units[unit_i];
+    }'
+}
 
 _ff_split_range() {
     local full_start="$1" full_end="$2"; shift 2
@@ -789,7 +847,16 @@ while true; do
                 fi
                 used_gb=$(awk "BEGIN {printf \"%.2f\", $accum_disp / 1073741824}")
                 remain_gb=$(awk "BEGIN {r=$bandwidth_gb - $used_gb; if(r<0) r=0; printf \"%.2f\", r}")
-                bw_info="${used_gb}/${bandwidth_gb} GB used | ${remain_gb} GB left"
+                used_display=$(awk -v b="$accum_disp" 'BEGIN {
+                    split("KB MB GB TB PB", units, " ");
+                    val = b / 1024; if (val < 0) val = 0;
+                    unit_i = 1;
+                    while (val >= 1024 && unit_i < 5) { val /= 1024; unit_i++; }
+                    if (val < 10) printf "%.2f %s", val, units[unit_i];
+                    else if (val < 100) printf "%.1f %s", val, units[unit_i];
+                    else printf "%.0f %s", val, units[unit_i];
+                }')
+                bw_info="${used_display} / ${bandwidth_gb} GB used | ${remain_gb} GB left"
             fi
 
             banner_content="<br><font color=\"yellow\"><b>      ✨ ACCOUNT STATUS ✨      </b></font><br><br>"
@@ -1536,11 +1603,8 @@ edit_user() {
         local bw_used_display="N/A"
         if [[ -f "$BANDWIDTH_DIR/${username}.usage" ]]; then
             local used_bytes; used_bytes=$(cat "$BANDWIDTH_DIR/${username}.usage" 2>/dev/null)
-            if [[ -n "$used_bytes" && "$used_bytes" != "0" ]]; then
-                bw_used_display=$(awk "BEGIN {printf \"%.2f GB\", $used_bytes / 1073741824}")
-            else
-                bw_used_display="0.00 GB"
-            fi
+            [[ "$used_bytes" =~ ^[0-9]+$ ]] || used_bytes=0
+            bw_used_display=$(_ff_fmt_bytes "$used_bytes")
         fi
         
         echo -e "\n  ${C_DIM}Current: Pass=${C_YELLOW}$cur_pass${C_RESET}${C_DIM} Exp=${C_YELLOW}$cur_expiry${C_RESET}${C_DIM} Conn=${C_YELLOW}$cur_limit${C_RESET}${C_DIM} BW=${C_YELLOW}$cur_bw_display${C_RESET}${C_DIM} Used=${C_CYAN}$bw_used_display${C_RESET}"
@@ -1655,7 +1719,7 @@ list_users() {
     fi
     echo -e "${C_BOLD}${C_PURPLE}--- 📋 Managed Users ---${C_RESET}"
     echo -e "${C_CYAN}=========================================================================================${C_RESET}"
-    printf "${C_BOLD}${C_WHITE}%-18s | %-12s | %-10s | %-15s | %-20s${C_RESET}\n" "USERNAME" "EXPIRES" "CONNS" "BANDWIDTH" "STATUS"
+    printf "${C_BOLD}${C_WHITE}%-18s | %-12s | %-10s | %-22s | %-20s${C_RESET}\n" "USERNAME" "EXPIRES" "CONNS" "BANDWIDTH" "STATUS"
     echo -e "${C_CYAN}-----------------------------------------------------------------------------------------${C_RESET}"
 
     local current_ts
@@ -1692,7 +1756,7 @@ list_users() {
             fi
             local used_gb
             used_gb=$(awk "BEGIN {printf \"%.1f\", $used_bytes / 1073741824}")
-            bw_string="${used_gb}/${bandwidth_gb}GB"
+            bw_string="$(_ff_fmt_bytes "$used_bytes") / ${bandwidth_gb}GB"
             local quota_bytes
             quota_bytes=$(awk "BEGIN {printf \"%.0f\", $bandwidth_gb * 1073741824}")
             if [[ "$quota_bytes" =~ ^[0-9]+$ ]] && (( used_bytes >= quota_bytes )); then
@@ -1735,7 +1799,7 @@ list_users() {
             "Not Found") line_color="$C_DIM" ;;
         esac
 
-        printf "${line_color}%-18s ${C_RESET}| ${C_YELLOW}%-12s ${C_RESET}| ${C_CYAN}%-10s ${C_RESET}| ${C_ORANGE}%-15s ${C_RESET}| %-20s\n" "$user" "$expiry" "$connection_string" "$bw_string" "$status"
+        printf "${line_color}%-18s ${C_RESET}| ${C_YELLOW}%-12s ${C_RESET}| ${C_CYAN}%-10s ${C_RESET}| ${C_ORANGE}%-22s ${C_RESET}| %-20s\n" "$user" "$expiry" "$connection_string" "$bw_string" "$status"
     done < <(sort "$DB_FILE")
     echo -e "${C_CYAN}=========================================================================================${C_RESET}\n"
 }
@@ -1858,17 +1922,8 @@ restore_user_data() {
     if [ -d "$restored_root/ssl" ]; then
         cp -r "$restored_root/ssl" "$DB_DIR/"
     fi
-    if [ -d "$restored_root/dnstt" ]; then
-        cp -r "$restored_root/dnstt" "$DB_DIR/"
-    fi
     if [ -f "$restored_root/dns_info.conf" ]; then
         cp "$restored_root/dns_info.conf" "$DB_DIR/"
-    fi
-    if [ -f "$restored_root/dnstt_info.conf" ]; then
-        cp "$restored_root/dnstt_info.conf" "$DB_DIR/"
-    fi
-    if [ -f "$restored_root/falconproxy_config.conf" ]; then
-        cp "$restored_root/falconproxy_config.conf" "$DB_DIR/"
     fi
     
     echo -e "${C_BLUE}⚙️ Re-synchronizing system accounts with the restored database...${C_RESET}"
@@ -2104,19 +2159,7 @@ WantedBy=default.target
 EOF
 
     echo -e "\n${C_BLUE}🔥 Configuring Firewall Rules (${UDP_CUSTOM_RANGE_START}-${UDP_CUSTOM_RANGE_END}, excl. ${UDP_CUSTOM_EXCLUDE_SINGLE_PORTS// /,} + ${ZIVPN_RANGE_START}-${ZIVPN_RANGE_END} -> ${UDP_CUSTOM_LISTEN_PORT})...${C_RESET}"
-    _ff_flush_dnat_to_port "$UDP_CUSTOM_LISTEN_PORT"
-    local _udpc_excl_args=()
-    local _p
-    for _p in $UDP_CUSTOM_EXCLUDE_SINGLE_PORTS; do
-        _udpc_excl_args+=("$_p" "$_p")
-    done
-    _udpc_excl_args+=("$ZIVPN_RANGE_START" "$ZIVPN_RANGE_END")
-    local _udpc_seg
-    while read -r _udpc_seg; do
-        [ -z "$_udpc_seg" ] && continue
-        local _seg_start=${_udpc_seg% *} _seg_end=${_udpc_seg#* }
-        check_and_open_firewall_udp_range "$_seg_start" "$_seg_end" "$UDP_CUSTOM_LISTEN_PORT"
-    done < <(_ff_split_range "$UDP_CUSTOM_RANGE_START" "$UDP_CUSTOM_RANGE_END" "${_udpc_excl_args[@]}")
+    _ff_rebuild_udp_dnat_rules
 
     echo -e "\n${C_GREEN}▶️ Enabling and starting udp-custom service...${C_RESET}"
     systemctl daemon-reload
@@ -2147,6 +2190,8 @@ uninstall_udp_custom() {
     systemctl daemon-reload
     echo -e "${C_GREEN}🗑️ Removing udp-custom directory and files...${C_RESET}"
     rm -rf "$UDP_CUSTOM_DIR"
+    echo -e "${C_GREEN}🔥 Removing firewall redirect rules...${C_RESET}"
+    _ff_rebuild_udp_dnat_rules
     echo -e "${C_GREEN}✅ udp-custom has been uninstalled successfully.${C_RESET}"
 }
 
@@ -2904,1328 +2949,6 @@ EOF
     fi
 }
 
-show_dnstt_details() {
-    if [ ! -f "$DNSTT_CONFIG_FILE" ]; then
-        echo -e "\n${C_YELLOW}ℹ️ DNSTT configuration file not found.${C_RESET}"
-        return 1
-    fi
-    
-    source "$DNSTT_CONFIG_FILE"
-    
-    # Détection du mode simultané
-    local is_multi=false
-    if [[ "$MULTI_TARGET" == "true" ]] || [[ "$FORWARD_DESC" == *"SSH + V2Ray"* ]] || \
-       [[ -f "/etc/systemd/system/dnstt-mux.service" ]] && systemctl is-active --quiet dnstt-mux.service 2>/dev/null; then
-        is_multi=true
-    fi
-    
-    echo -e "\n${C_GREEN}=====================================================${C_RESET}"
-    echo -e "${C_GREEN}            📡 DNSTT Connection Details             ${C_RESET}"
-    echo -e "${C_GREEN}=====================================================${C_RESET}"
-    
-    echo -e "\n${C_WHITE}Connection Details:${C_RESET}"
-    echo -e "  - ${C_CYAN}Tunnel Domain:${C_RESET} ${C_YELLOW}$TUNNEL_DOMAIN${C_RESET}"
-    echo -e "  - ${C_CYAN}Nameserver:${C_RESET}    ${C_YELLOW}$NS_DOMAIN${C_RESET}"
-    echo -e "  - ${C_CYAN}Public Key:${C_RESET}    ${C_YELLOW}$PUBLIC_KEY${C_RESET}"
-    
-    if [[ -n "$MTU_VALUE" ]]; then
-        echo -e "  - ${C_CYAN}MTU Value:${C_RESET}     ${C_YELLOW}$MTU_VALUE${C_RESET}"
-    fi
-    
-    # Mode
-    if [[ "$is_multi" == "true" ]]; then
-        echo -e "  - ${C_CYAN}Mode:${C_RESET}          ${C_GREEN}SSH + V2Ray${C_RESET}"
-        echo -e "  - ${C_CYAN}Backend:${C_RESET}       ${C_YELLOW}127.0.0.1:10022 (HAProxy)${C_RESET}"
-        echo -e "  - ${C_CYAN}SSH →:${C_RESET}         ${C_YELLOW}127.0.0.1:22${C_RESET}"
-        echo -e "  - ${C_CYAN}V2Ray →:${C_RESET}       ${C_YELLOW}127.0.0.1:8787${C_RESET}"
-    elif [[ "$FORWARD_DESC" == *"V2Ray"* ]]; then
-        echo -e "  - ${C_CYAN}Mode:${C_RESET}          ${C_GREEN}V2Ray only${C_RESET}"
-        echo -e "  - ${C_CYAN}Forward:${C_RESET}       ${C_YELLOW}127.0.0.1:8787${C_RESET}"
-    elif [[ "$FORWARD_DESC" == *"SSH"* ]]; then
-        echo -e "  - ${C_CYAN}Mode:${C_RESET}          ${C_GREEN}SSH only${C_RESET}"
-        echo -e "  - ${C_CYAN}Forward:${C_RESET}       ${C_YELLOW}127.0.0.1:22${C_RESET}"
-    fi
-    
-    # Statut
-    echo -e "\n${C_WHITE}Service Status:${C_RESET}"
-    if systemctl is-active --quiet dnstt.service 2>/dev/null; then
-        echo -e "  - ${C_GREEN}✅ DNSTT: Running${C_RESET}"
-    else
-        echo -e "  - ${C_RED}❌ DNSTT: Stopped${C_RESET}"
-    fi
-    
-    if [[ "$is_multi" == "true" ]]; then
-        if systemctl is-active --quiet dnstt-mux.service 2>/dev/null; then
-            echo -e "  - ${C_GREEN}✅ Multiplexer: Running${C_RESET}"
-        else
-            echo -e "  - ${C_RED}❌ Multiplexer: Stopped${C_RESET}"
-        fi
-    fi
-    
-    # Exemples clients
-    echo -e "\n${C_WHITE}Client Examples:${C_RESET}"
-    if [[ "$is_multi" == "true" ]]; then
-        echo -e "  ${C_YELLOW}SSH:${C_RESET}"
-        echo -e "    ssh -o ProxyCommand=\"./dnstt-client -dns $NS_DOMAIN -pubkey $PUBLIC_KEY $TUNNEL_DOMAIN %h %p\" user@localhost"
-        echo -e "  ${C_YELLOW}V2Ray:${C_RESET}"
-        echo -e "    DNS: $TUNNEL_DOMAIN (port 53)"
-    elif [[ "$FORWARD_DESC" == *"V2Ray"* ]]; then
-        echo -e "  ${C_YELLOW}V2Ray:${C_RESET}"
-        echo -e "    DNS: $TUNNEL_DOMAIN (port 53)"
-    else
-        echo -e "  ${C_YELLOW}SSH:${C_RESET}"
-        echo -e "    ssh -o ProxyCommand=\"./dnstt-client -dns $NS_DOMAIN -pubkey $PUBLIC_KEY $TUNNEL_DOMAIN %h %p\" user@localhost"
-    fi
-    
-    echo -e "\n${C_DIM}💡 Logs: journalctl -u dnstt.service -f${C_RESET}"
-    echo -e "${C_GREEN}=====================================================${C_RESET}"
-}
-
-
-install_dnstt() {
-    clear
-    show_banner
-
-    echo -e "${C_BOLD}${C_PURPLE}--- 📡 DNSTT (DNS Tunnel) Management ---${C_RESET}"
-
-    # ================================================================
-    # VARIABLES
-    # ================================================================
-
-    local MUX_PORT="10022"
-    local MUX_CONFIG="/etc/haproxy/haproxy-dnstt-mux.cfg"
-    local MUX_SERVICE_FILE="/etc/systemd/system/dnstt-mux.service"
-
-    # ================================================================
-    # FONCTION : CONFIGURER LE MULTIPLEXEUR SSH + V2RAY
-    # ================================================================
-
-    configure_dnstt_mux() {
-
-        echo -e "\n${C_BLUE}🔀 Configuring SSH + V2Ray multiplexer...${C_RESET}"
-
-        # ------------------------------------------------------------
-        # Vérification SSH
-        # ------------------------------------------------------------
-
-        if ss -lnt 2>/dev/null | grep -qE '(^|:)22[[:space:]]'; then
-            echo -e "${C_GREEN}✅ SSH detected on port 22.${C_RESET}"
-        else
-            echo -e "${C_YELLOW}⚠️ SSH does not appear to listen on port 22.${C_RESET}"
-        fi
-
-        # ------------------------------------------------------------
-        # Vérification V2Ray
-        # ------------------------------------------------------------
-
-        if ss -lnt 2>/dev/null | grep -qE '(^|:)8787[[:space:]]'; then
-            echo -e "${C_GREEN}✅ V2Ray detected on port 8787.${C_RESET}"
-        else
-            echo -e "${C_YELLOW}⚠️ V2Ray does not appear to listen on port 8787.${C_RESET}"
-            echo -e "${C_DIM}   Make sure your V2Ray inbound uses 127.0.0.1:8787.${C_RESET}"
-        fi
-
-        # ------------------------------------------------------------
-        # HAProxy nécessaire pour le multiplexage
-        # ------------------------------------------------------------
-
-        if ! command -v haproxy >/dev/null 2>&1; then
-
-            echo -e "${C_BLUE}📦 HAProxy is required for the multiplexer.${C_RESET}"
-
-            ff_apt_install haproxy || {
-                echo -e "${C_RED}❌ Failed to install HAProxy.${C_RESET}"
-                return 1
-            }
-        fi
-
-        # ------------------------------------------------------------
-        # Vérifier le port 10022
-        # ------------------------------------------------------------
-
-        if ss -lnt 2>/dev/null | grep -q ":${MUX_PORT} "; then
-
-            echo -e "${C_YELLOW}⚠️ Port ${MUX_PORT} is already in use.${C_RESET}"
-
-            echo
-            ss -lntp 2>/dev/null | grep ":${MUX_PORT}" || true
-
-            echo
-            read -p "👉 Continue using this port? (y/n) [n]: " mux_continue
-
-            if [[ "$mux_continue" != "y" && "$mux_continue" != "Y" ]]; then
-                echo -e "${C_RED}❌ Multiplexer installation cancelled.${C_RESET}"
-                return 1
-            fi
-        fi
-
-        # ------------------------------------------------------------
-        # Création configuration HAProxy
-        # ------------------------------------------------------------
-
-        mkdir -p /etc/haproxy
-
-        cat > "$MUX_CONFIG" <<EOF
-global
-    log /dev/log local0
-    log /dev/log local1 notice
-    daemon
-
-defaults
-    log global
-    mode tcp
-    option tcplog
-    option dontlognull
-
-    timeout connect 5s
-    timeout client 24h
-    timeout server 24h
-
-frontend dnstt_mux
-    bind 127.0.0.1:${MUX_PORT}
-    mode tcp
-
-    # ------------------------------------------------------------
-    # SSH detection
-    #
-    # SSH normally begins with:
-    #
-    # SSH-2.0-
-    #
-    # Hex:
-    # 53 53 48 2D 32 2E 30
-    # ------------------------------------------------------------
-
-    tcp-request inspect-delay 2s
-
-    acl is_ssh payload(0,7) -m bin 5353482d322e30
-
-    tcp-request content accept if is_ssh
-
-    # SSH
-    use_backend dnstt_ssh if is_ssh
-
-    # Everything else
-    # goes to V2Ray
-    default_backend dnstt_v2ray
-
-
-backend dnstt_ssh
-    mode tcp
-    server ssh_backend 127.0.0.1:22 check
-
-
-backend dnstt_v2ray
-    mode tcp
-    server v2ray_backend 127.0.0.1:8787 check
-EOF
-
-        # ------------------------------------------------------------
-        # Validation HAProxy
-        # ------------------------------------------------------------
-
-        echo -e "${C_BLUE}🧪 Validating multiplexer configuration...${C_RESET}"
-
-        if ! haproxy -c -f "$MUX_CONFIG"; then
-            echo -e "${C_RED}❌ HAProxy multiplexer configuration is invalid.${C_RESET}"
-            return 1
-        fi
-
-        # ------------------------------------------------------------
-        # Service systemd séparé
-        # ------------------------------------------------------------
-
-        cat > "$MUX_SERVICE_FILE" <<EOF
-[Unit]
-Description=DNSTT SSH + V2Ray Multiplexer
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/usr/sbin/haproxy -f ${MUX_CONFIG} -db
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-        systemctl daemon-reload
-
-        systemctl enable dnstt-mux.service >/dev/null 2>&1
-
-        systemctl restart dnstt-mux.service
-
-        sleep 2
-
-        if ! systemctl is-active --quiet dnstt-mux.service; then
-
-            echo -e "${C_RED}❌ DNSTT multiplexer failed to start.${C_RESET}"
-
-            journalctl \
-                -u dnstt-mux.service \
-                -n 30 \
-                --no-pager
-
-            return 1
-        fi
-
-        echo -e "${C_GREEN}✅ SSH + V2Ray multiplexer is active.${C_RESET}"
-        echo -e "   ${C_YELLOW}DNSTT → 127.0.0.1:${MUX_PORT}${C_RESET}"
-        echo -e "   ${C_YELLOW}SSH   → 127.0.0.1:22${C_RESET}"
-        echo -e "   ${C_YELLOW}V2Ray → 127.0.0.1:8787${C_RESET}"
-
-        return 0
-    }
-
-
-    # ================================================================
-    # FUNCTION : SET DNSTT DESTINATION
-    # ================================================================
-
-    set_dnstt_destination() {
-
-        local destination="$1"
-        local description="$2"
-
-        if [[ -z "$destination" ]]; then
-            echo -e "${C_RED}❌ Empty DNSTT destination.${C_RESET}"
-            return 1
-        fi
-
-        if [[ ! -f "$DNSTT_SERVICE_FILE" ]]; then
-            echo -e "${C_RED}❌ DNSTT service file not found.${C_RESET}"
-            return 1
-        fi
-
-        # Backup
-        cp "$DNSTT_SERVICE_FILE" \
-            "${DNSTT_SERVICE_FILE}.bak.$(date +%Y%m%d%H%M%S)"
-
-        # ------------------------------------------------------------
-        # On remplace uniquement le dernier argument de ExecStart.
-        #
-        # Exemple :
-        #
-        # ... tunnel.example.com 127.0.0.1:22
-        #
-        # devient :
-        #
-        # ... tunnel.example.com 127.0.0.1:10022
-        # ------------------------------------------------------------
-
-        sed -i -E \
-            's#([[:space:]])127\.0\.0\.1:[0-9]+([[:space:]]*)$#\1'"$destination"'\2#' \
-            "$DNSTT_SERVICE_FILE"
-
-        # Description
-        sed -i \
-            's/^Description=.*/Description=DNSTT - '"$description"'/' \
-            "$DNSTT_SERVICE_FILE"
-
-        systemctl daemon-reload
-
-        return 0
-    }
-
-
-    # ================================================================
-    # CASE 1 : DNSTT ALREADY INSTALLED
-    # ================================================================
-
-    if [[ -f "$DNSTT_SERVICE_FILE" ]]; then
-
-        echo -e "\n${C_YELLOW}ℹ️ DNSTT is already installed.${C_RESET}"
-
-        show_dnstt_details
-
-        echo
-        echo -e "${C_BOLD}${C_PURPLE}--- 🔀 DNSTT Configuration ---${C_RESET}"
-        echo
-        echo -e "  ${C_GREEN}[ 1]${C_RESET} Keep current configuration"
-        echo -e "  ${C_GREEN}[ 2]${C_RESET} SSH only"
-        echo -e "  ${C_GREEN}[ 3]${C_RESET} V2Ray only"
-        echo -e "  ${C_GREEN}[ 4]${C_RESET} SSH + V2Ray"
-        echo
-
-        read -p "👉 Enter choice [1]: " existing_choice
-        existing_choice=${existing_choice:-1}
-
-        case "$existing_choice" in
-
-            1)
-
-                echo -e "${C_GREEN}✅ Keeping existing DNSTT configuration.${C_RESET}"
-                return 0
-                ;;
-
-            2)
-
-                echo -e "\n${C_BLUE}🔧 Configuring DNSTT → SSH...${C_RESET}"
-
-                set_dnstt_destination \
-                    "127.0.0.1:22" \
-                    "SSH only" || return 1
-
-                # Si le multiplexeur existait, on peut le laisser arrêté.
-                if [[ -f "$MUX_SERVICE_FILE" ]]; then
-                    systemctl stop dnstt-mux.service >/dev/null 2>&1
-                    systemctl disable dnstt-mux.service >/dev/null 2>&1
-                fi
-
-                systemctl restart dnstt.service
-
-                sleep 2
-
-                if systemctl is-active --quiet dnstt.service; then
-                    echo -e "${C_GREEN}✅ DNSTT is now configured for SSH only.${C_RESET}"
-                else
-                    echo -e "${C_RED}❌ DNSTT failed to restart.${C_RESET}"
-                    journalctl -u dnstt.service -n 30 --no-pager
-                    return 1
-                fi
-
-                return 0
-                ;;
-
-            3)
-
-                echo -e "\n${C_BLUE}🔧 Configuring DNSTT → V2Ray...${C_RESET}"
-
-                set_dnstt_destination \
-                    "127.0.0.1:8787" \
-                    "V2Ray only" || return 1
-
-                if [[ -f "$MUX_SERVICE_FILE" ]]; then
-                    systemctl stop dnstt-mux.service >/dev/null 2>&1
-                    systemctl disable dnstt-mux.service >/dev/null 2>&1
-                fi
-
-                systemctl restart dnstt.service
-
-                sleep 2
-
-                if systemctl is-active --quiet dnstt.service; then
-                    echo -e "${C_GREEN}✅ DNSTT is now configured for V2Ray only.${C_RESET}"
-                else
-                    echo -e "${C_RED}❌ DNSTT failed to restart.${C_RESET}"
-                    journalctl -u dnstt.service -n 30 --no-pager
-                    return 1
-                fi
-
-                return 0
-                ;;
-
-            4)
-
-                echo -e "\n${C_BLUE}🔀 Upgrading DNSTT → SSH + V2Ray...${C_RESET}"
-
-                # ----------------------------------------------------
-                # Créer le multiplexeur
-                # ----------------------------------------------------
-
-                configure_dnstt_mux || return 1
-
-                # ----------------------------------------------------
-                # DNSTT → multiplexeur
-                # ----------------------------------------------------
-
-                set_dnstt_destination \
-                    "127.0.0.1:${MUX_PORT}" \
-                    "SSH + V2Ray" || return 1
-
-                # ----------------------------------------------------
-                # Redémarrer DNSTT
-                # ----------------------------------------------------
-
-                systemctl daemon-reload
-                systemctl restart dnstt.service
-
-                sleep 2
-
-                if ! systemctl is-active --quiet dnstt.service; then
-
-                    echo -e "${C_RED}❌ DNSTT failed after upgrade.${C_RESET}"
-
-                    journalctl \
-                        -u dnstt.service \
-                        -n 30 \
-                        --no-pager
-
-                    return 1
-                fi
-
-                echo
-                echo -e "${C_GREEN}==============================================${C_RESET}"
-                echo -e "${C_GREEN}✅ DNSTT upgraded to SSH + V2Ray${C_RESET}"
-                echo -e "${C_GREEN}==============================================${C_RESET}"
-                echo
-                echo -e "   DNSTT : ${C_YELLOW}127.0.0.1:${MUX_PORT}${C_RESET}"
-                echo -e "   SSH   : ${C_YELLOW}127.0.0.1:22${C_RESET}"
-                echo -e "   V2Ray : ${C_YELLOW}127.0.0.1:8787${C_RESET}"
-                echo
-
-                return 0
-                ;;
-
-            *)
-
-                echo -e "${C_RED}❌ Invalid choice.${C_RESET}"
-                return 1
-                ;;
-
-        esac
-    fi
-
-
-    # ================================================================
-    # CASE 2 : DNSTT NOT INSTALLED
-    # ================================================================
-
-
-    echo -e "${C_GREEN}⚙️ Forcing release of Port 53...${C_RESET}"
-
-    systemctl stop systemd-resolved >/dev/null 2>&1
-    systemctl disable systemd-resolved >/dev/null 2>&1
-
-    chattr -i /etc/resolv.conf >/dev/null 2>&1
-    rm -f /etc/resolv.conf
-
-    echo "nameserver 8.8.8.8" > /etc/resolv.conf
-
-    echo -e "\n${C_BLUE}🔎 Checking port 53/UDP...${C_RESET}"
-
-    if ss -lunp 2>/dev/null | grep -qE '(:|[[:space:]])53[[:space:]]'; then
-
-        echo -e "${C_RED}❌ Port 53/UDP is still in use.${C_RESET}"
-
-        ss -lunp 2>/dev/null | grep -E '(:|[[:space:]])53[[:space:]]'
-
-        return 1
-
-    else
-
-        echo -e "${C_GREEN}✅ Port 53/UDP is available.${C_RESET}"
-
-    fi
-
-    check_and_open_firewall_port 53 udp || return 1
-
-
-    local forward_port=""
-    local forward_desc=""
-
-    echo
-    echo -e "${C_BLUE}Please choose the DNSTT backend:${C_RESET}"
-    echo
-    echo -e "  ${C_GREEN}[ 1]${C_RESET} SSH only"
-    echo -e "  ${C_GREEN}[ 2]${C_RESET} V2Ray only"
-    echo -e "  ${C_GREEN}[ 3]${C_RESET} SSH + V2Ray"
-    echo
-
-    read -p "👉 Enter your choice [3]: " fwd_choice
-    fwd_choice=${fwd_choice:-3}
-
-    case "$fwd_choice" in
-
-        1)
-
-            forward_port="22"
-            forward_desc="SSH only"
-
-            echo -e "${C_GREEN}ℹ️ DNSTT → 127.0.0.1:22${C_RESET}"
-
-            ;;
-
-        2)
-
-            forward_port="8787"
-            forward_desc="V2Ray only"
-
-            echo -e "${C_GREEN}ℹ️ DNSTT → 127.0.0.1:8787${C_RESET}"
-
-            ;;
-
-        3)
-
-            forward_port="$MUX_PORT"
-            forward_desc="SSH + V2Ray"
-
-            echo -e "${C_GREEN}ℹ️ DNSTT → SSH + V2Ray multiplexer${C_RESET}"
-
-            configure_dnstt_mux || return 1
-
-            ;;
-
-        *)
-
-            echo -e "${C_RED}❌ Invalid choice. Aborting.${C_RESET}"
-            return 1
-
-            ;;
-
-    esac
-
-    local FORWARD_TARGET="127.0.0.1:${forward_port}"
-
-
-
-    local NS_DOMAIN=""
-    local TUNNEL_DOMAIN=""
-    local DNSTT_RECORDS_MANAGED="true"
-    local NS_SUBDOMAIN=""
-    local TUNNEL_SUBDOMAIN=""
-    local HAS_IPV6="false"
-
-
-    # ================================================================
-    # DNS
-    # ================================================================
-
-    read -p \
-        "👉 Auto-generate DNS records or use custom ones? (auto/custom) [auto]: " \
-        dns_choice
-
-    dns_choice=${dns_choice:-auto}
-
-    if [[ "$dns_choice" == "custom" ]]; then
-
-        DNSTT_RECORDS_MANAGED="false"
-
-        read -p \
-            "👉 Enter your full nameserver domain (e.g., ns1.yourdomain.com): " \
-            NS_DOMAIN
-
-        if [[ -z "$NS_DOMAIN" ]]; then
-            echo -e "${C_RED}❌ Nameserver domain cannot be empty.${C_RESET}"
-            return 1
-        fi
-
-        read -p \
-            "👉 Enter your full tunnel domain (e.g., tun.yourdomain.com): " \
-            TUNNEL_DOMAIN
-
-        if [[ -z "$TUNNEL_DOMAIN" ]]; then
-            echo -e "${C_RED}❌ Tunnel domain cannot be empty.${C_RESET}"
-            return 1
-        fi
-
-    else
-
-        echo -e "\n${C_BLUE}⚙️ Configuring DNS records for DNSTT...${C_RESET}"
-
-        local SERVER_IPV4
-        SERVER_IPV4=$(curl -s -4 --max-time 10 icanhazip.com)
-
-        if ! _is_valid_ipv4 "$SERVER_IPV4"; then
-
-            echo -e "${C_RED}❌ Could not retrieve a valid IPv4 address.${C_RESET}"
-            echo -e "${C_DIM}Output: $SERVER_IPV4${C_RESET}"
-
-            return 1
-        fi
-
-
-        local SERVER_IPV6
-        SERVER_IPV6=$(curl -s -6 --max-time 5 icanhazip.com 2>/dev/null || true)
-
-
-        local RANDOM_STR
-        RANDOM_STR=$(tr -dc a-z0-9 </dev/urandom | head -c 6)
-
-        NS_SUBDOMAIN="ns-${RANDOM_STR}"
-        TUNNEL_SUBDOMAIN="tun-${RANDOM_STR}"
-
-        NS_DOMAIN="${NS_SUBDOMAIN}.${DESEC_DOMAIN}"
-        TUNNEL_DOMAIN="${TUNNEL_SUBDOMAIN}.${DESEC_DOMAIN}"
-
-
-        local API_DATA
-
-        API_DATA=$(printf \
-            '[{"subname":"%s","type":"A","ttl":3600,"records":["%s"]},{"subname":"%s","type":"NS","ttl":3600,"records":["%s."]}]' \
-            "$NS_SUBDOMAIN" \
-            "$SERVER_IPV4" \
-            "$TUNNEL_SUBDOMAIN" \
-            "$NS_DOMAIN")
-
-
-        if [[ -n "$SERVER_IPV6" ]]; then
-
-            API_DATA="${API_DATA%]}"
-
-            API_DATA="${API_DATA},$(printf \
-                '{"subname":"%s","type":"AAAA","ttl":3600,"records":["%s"]}' \
-                "$NS_SUBDOMAIN" \
-                "$SERVER_IPV6") ]"
-
-            API_DATA="${API_DATA/ ]/]}"
-
-            HAS_IPV6="true"
-        fi
-
-
-        local CREATE_RESPONSE
-
-        CREATE_RESPONSE=$(curl \
-            -s \
-            -w "%{http_code}" \
-            -X POST \
-            "https://desec.io/api/v1/domains/${DESEC_DOMAIN}/rrsets/" \
-            -H "Authorization: Token ${DESEC_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "$API_DATA")
-
-
-        local HTTP_CODE="${CREATE_RESPONSE: -3}"
-        local RESPONSE_BODY="${CREATE_RESPONSE:0:${#CREATE_RESPONSE}-3}"
-
-
-        if [[ "$HTTP_CODE" != "201" ]]; then
-
-            echo -e "${C_RED}❌ Failed to create DNS records.${C_RESET}"
-            echo -e "${C_YELLOW}HTTP code: ${HTTP_CODE}${C_RESET}"
-
-            if command -v jq >/dev/null 2>&1; then
-                echo "$RESPONSE_BODY" | jq .
-            else
-                echo "$RESPONSE_BODY"
-            fi
-
-            return 1
-        fi
-
-        echo -e "${C_GREEN}✅ DNS records created.${C_RESET}"
-
-    fi
-
-
-    # ================================================================
-    # MTU
-    # ================================================================
-
-    read -p \
-        "👉 Enter MTU value (e.g., 512, 1200) or press [Enter] for default: " \
-        mtu_value
-
-    local mtu_string=""
-
-    if [[ "$mtu_value" =~ ^[0-9]+$ ]]; then
-
-        mtu_string=" -mtu ${mtu_value}"
-
-        echo -e "${C_GREEN}ℹ️ Using MTU: ${mtu_value}${C_RESET}"
-
-    else
-
-        mtu_value=""
-
-        echo -e "${C_YELLOW}ℹ️ Using default MTU.${C_RESET}"
-
-    fi
-
-
-
-    echo -e "\n${C_BLUE}📥 Downloading DNSTT server binary...${C_RESET}"
-
-    local arch
-    local binary_url=""
-
-    arch=$(uname -m)
-
-    case "$arch" in
-
-        x86_64)
-
-            binary_url="https://dnstt.network/dnstt-server-linux-amd64"
-
-            ;;
-
-        aarch64|arm64)
-
-            binary_url="https://dnstt.network/dnstt-server-linux-arm64"
-
-            ;;
-
-        *)
-
-            echo -e "${C_RED}❌ Unsupported architecture: ${arch}${C_RESET}"
-            return 1
-
-            ;;
-
-    esac
-
-
-    if ! curl -fL \
-        --connect-timeout 10 \
-        --max-time 120 \
-        "$binary_url" \
-        -o "$DNSTT_BINARY"; then
-
-        echo -e "${C_RED}❌ Failed to download DNSTT binary.${C_RESET}"
-        return 1
-
-    fi
-
-    chmod +x "$DNSTT_BINARY"
-
-
-
-    echo -e "${C_BLUE}🔐 Generating cryptographic keys...${C_RESET}"
-
-    mkdir -p "$DNSTT_KEYS_DIR"
-
-    if [[ ! -f "$DNSTT_KEYS_DIR/server.key" ]]; then
-
-        "$DNSTT_BINARY" \
-            -gen-key \
-            -privkey-file "$DNSTT_KEYS_DIR/server.key" \
-            -pubkey-file "$DNSTT_KEYS_DIR/server.pub"
-
-        if [[ ! -f "$DNSTT_KEYS_DIR/server.key" ]]; then
-
-            echo -e "${C_RED}❌ Failed to generate DNSTT keys.${C_RESET}"
-            return 1
-
-        fi
-
-    else
-
-        echo -e "${C_GREEN}✅ Existing DNSTT key retained.${C_RESET}"
-
-    fi
-
-
-    chmod 600 "$DNSTT_KEYS_DIR/server.key"
-
-    local PUBLIC_KEY
-    PUBLIC_KEY=$(cat "$DNSTT_KEYS_DIR/server.pub")
-
-
-    # ================================================================
-    # SERVICE SYSTEMD DNSTT
-    # ================================================================
-
-    echo -e "\n${C_BLUE}📝 Creating DNSTT systemd service...${C_RESET}"
-
-    cat > "$DNSTT_SERVICE_FILE" <<EOF
-[Unit]
-Description=DNSTT - ${forward_desc}
-After=network.target
-
-[Service]
-Type=simple
-User=root
-ExecStart=${DNSTT_BINARY} -udp :53${mtu_string} -privkey-file ${DNSTT_KEYS_DIR}/server.key ${TUNNEL_DOMAIN} ${FORWARD_TARGET}
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-
-
-    echo -e "\n${C_BLUE}💾 Saving configuration...${C_RESET}"
-
-    cat > "$DNSTT_CONFIG_FILE" <<EOF
-NS_SUBDOMAIN="${NS_SUBDOMAIN}"
-TUNNEL_SUBDOMAIN="${TUNNEL_SUBDOMAIN}"
-NS_DOMAIN="${NS_DOMAIN}"
-TUNNEL_DOMAIN="${TUNNEL_DOMAIN}"
-PUBLIC_KEY="${PUBLIC_KEY}"
-FORWARD_DESC="${forward_desc}"
-FORWARD_TARGET="${FORWARD_TARGET}"
-DNSTT_RECORDS_MANAGED="${DNSTT_RECORDS_MANAGED}"
-HAS_IPV6="${HAS_IPV6}"
-MTU_VALUE="${mtu_value}"
-EOF
-
-
-    systemctl daemon-reload
-
-    systemctl enable dnstt.service >/dev/null 2>&1
-    systemctl restart dnstt.service
-
-    sleep 2
-
-
-    if systemctl is-active --quiet dnstt.service; then
-
-        echo
-        echo -e "${C_GREEN}==============================================${C_RESET}"
-        echo -e "${C_GREEN}✅ DNSTT installation successful${C_RESET}"
-        echo -e "${C_GREEN}==============================================${C_RESET}"
-
-        echo -e "   Domain : ${C_YELLOW}${TUNNEL_DOMAIN}${C_RESET}"
-        echo -e "   Mode   : ${C_YELLOW}${forward_desc}${C_RESET}"
-        echo -e "   Target : ${C_YELLOW}${FORWARD_TARGET}${C_RESET}"
-
-        if [[ "$fwd_choice" == "3" ]]; then
-            echo -e "   SSH    : ${C_YELLOW}127.0.0.1:22${C_RESET}"
-            echo -e "   V2Ray  : ${C_YELLOW}127.0.0.1:8787${C_RESET}"
-        fi
-
-        echo
-
-        show_dnstt_details
-
-    else
-
-        echo -e "${C_RED}❌ DNSTT service failed to start.${C_RESET}"
-
-        journalctl \
-            -u dnstt.service \
-            -n 30 \
-            --no-pager
-
-        return 1
-
-    fi
-}
-
-uninstall_dnstt() {
-    clear
-    show_banner
-    
-    echo -e "\n${C_BOLD}${C_PURPLE}--- 🗑️ Uninstalling DNSTT ---${C_RESET}"
-    
-    
-    local MUX_SERVICE_FILE="/etc/systemd/system/dnstt-mux.service"
-    local MUX_CONFIG="/etc/haproxy/haproxy-dnstt-mux.cfg"
-    local DNSTT_CLIENT_BINARY="/usr/local/bin/dnstt-client"
-    
-    
-    if [ ! -f "$DNSTT_SERVICE_FILE" ] && [ ! -f "$MUX_SERVICE_FILE" ]; then
-        echo -e "${C_YELLOW}ℹ️ DNSTT does not appear to be installed.${C_RESET}"
-        return 0
-    fi
-    
-
-    local confirm="y"
-    if [[ "$UNINSTALL_MODE" != "silent" ]]; then
-        echo -e "\n${C_YELLOW}⚠️ Warning: This operation will remove:${C_RESET}"
-        echo -e "  • DNSTT service"
-        echo -e "  • HAProxy multiplexer (if present)"
-        echo -e "  • All cryptographic keys"
-        echo -e "  • DNS records (if they were auto-generated)"
-        echo -e "  • The DNSTT client (/usr/local/bin/dnstt-client)"
-        echo
-        read -p "👉 Are you sure you want to uninstall DNSTT? (y/n): " confirm
-    fi
-    
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-        echo -e "\n${C_YELLOW}❌ Uninstallation cancelled.${C_RESET}"
-        return 0
-    fi
-    
-  
-    
-    echo -e "\n${C_BLUE}🛑 Stopping and disabling services...${C_RESET}"
-    
-    # Stop DNSTT
-    if systemctl is-active --quiet dnstt.service 2>/dev/null; then
-        systemctl stop dnstt.service >/dev/null 2>&1
-        echo -e "${C_GREEN}✅ DNSTT stopped${C_RESET}"
-    fi
-    systemctl disable dnstt.service >/dev/null 2>&1
-    
-    # Stop the multiplexer
-    if systemctl is-active --quiet dnstt-mux.service 2>/dev/null; then
-        systemctl stop dnstt-mux.service >/dev/null 2>&1
-        echo -e "${C_GREEN}✅ Multiplexer stopped${C_RESET}"
-    fi
-    systemctl disable dnstt-mux.service >/dev/null 2>&1
-    
-    # ================================================================
-    # REMOVING DNS RECORDS
-    # ================================================================
-    
-    if [ -f "$DNSTT_CONFIG_FILE" ]; then
-        source "$DNSTT_CONFIG_FILE"
-        
-        if [[ "$DNSTT_RECORDS_MANAGED" == "true" ]]; then
-            echo -e "\n${C_BLUE}🗑️ Removing auto-generated DNS records...${C_RESET}"
-            
-            # Remove NS records
-            if [[ -n "$TUNNEL_SUBDOMAIN" ]] && [[ -n "$DESEC_DOMAIN" ]] && [[ -n "$DESEC_TOKEN" ]]; then
-                # Remove the wildcard NS record if present
-                if [[ "$TUNNEL_SUBDOMAIN" == "*" ]]; then
-                    curl -s -X DELETE "https://desec.io/api/v1/domains/$DESEC_DOMAIN/rrsets/%2A/NS/" \
-                        -H "Authorization: Token $DESEC_TOKEN" >/dev/null 2>&1
-                    echo -e "${C_GREEN}✅ Wildcard NS record removed${C_RESET}"
-                else
-                    curl -s -X DELETE "https://desec.io/api/v1/domains/$DESEC_DOMAIN/rrsets/$TUNNEL_SUBDOMAIN/NS/" \
-                        -H "Authorization: Token $DESEC_TOKEN" >/dev/null 2>&1
-                    echo -e "${C_GREEN}✅ NS record removed${C_RESET}"
-                fi
-                
-                # Remove A records
-                curl -s -X DELETE "https://desec.io/api/v1/domains/$DESEC_DOMAIN/rrsets/$NS_SUBDOMAIN/A/" \
-                    -H "Authorization: Token $DESEC_TOKEN" >/dev/null 2>&1
-                echo -e "${C_GREEN}✅ A record removed${C_RESET}"
-                
-                # Remove AAAA records if present
-                if [[ "$HAS_IPV6" == "true" ]]; then
-                    curl -s -X DELETE "https://desec.io/api/v1/domains/$DESEC_DOMAIN/rrsets/$NS_SUBDOMAIN/AAAA/" \
-                        -H "Authorization: Token $DESEC_TOKEN" >/dev/null 2>&1
-                    echo -e "${C_GREEN}✅ AAAA record removed${C_RESET}"
-                fi
-            fi
-        else
-            echo -e "\n${C_YELLOW}⚠️ DNS records were configured manually.${C_RESET}"
-            echo -e "${C_YELLOW}💡 Please remove them manually from your DNS provider.${C_RESET}"
-            echo -e "   Affected domains:"
-            [[ -n "$NS_DOMAIN" ]] && echo -e "   • $NS_DOMAIN"
-            [[ -n "$TUNNEL_DOMAIN" ]] && echo -e "   • $TUNNEL_DOMAIN"
-        fi
-    fi
-    
-    # ================================================================
-    # REMOVING SERVICE FILES
-    # ================================================================
-    
-    echo -e "\n${C_BLUE}🗑️ Removing service files...${C_RESET}"
-    
-    # Remove service files
-    rm -f "$DNSTT_SERVICE_FILE"
-    rm -f "$MUX_SERVICE_FILE"
-    echo -e "${C_GREEN}✅ Service files removed${C_RESET}"
-    
-    # Remove HAProxy configuration
-    if [[ -f "$MUX_CONFIG" ]]; then
-        rm -f "$MUX_CONFIG"
-        echo -e "${C_GREEN}✅ HAProxy configuration removed${C_RESET}"
-    fi
-    
-    # ================================================================
-    # REMOVING BINARIES
-    # ================================================================
-    
-    echo -e "\n${C_BLUE}🗑️ Removing binaries...${C_RESET}"
-    
-    # Remove the server binary
-    if [[ -f "$DNSTT_BINARY" ]]; then
-        rm -f "$DNSTT_BINARY"
-        echo -e "${C_GREEN}✅ DNSTT server binary removed${C_RESET}"
-    fi
-    
-    # Remove the client binary
-    if [[ -f "$DNSTT_CLIENT_BINARY" ]]; then
-        rm -f "$DNSTT_CLIENT_BINARY"
-        echo -e "${C_GREEN}✅ DNSTT client binary removed${C_RESET}"
-    fi
-    
-
-    
-    echo -e "\n${C_BLUE}🗑️ Removing cryptographic keys...${C_RESET}"
-    if [[ -d "$DNSTT_KEYS_DIR" ]]; then
-        rm -rf "$DNSTT_KEYS_DIR"
-        echo -e "${C_GREEN}✅ Keys removed${C_RESET}"
-    fi
-    
-
-    
-    echo -e "\n${C_BLUE}🗑️ Removing configuration files...${C_RESET}"
-    rm -f "$DNSTT_CONFIG_FILE"
-    rm -f /root/.ssh_slowdns_config 2>/dev/null
-    rm -f /root/.v2ray_slowdns_config 2>/dev/null
-    echo -e "${C_GREEN}✅ Configuration files removed${C_RESET}"
-    
-
-    echo -e "\n${C_YELLOW}ℹ️ Restoring DNS configuration...${C_RESET}"
-    
-    # Make /etc/resolv.conf editable again
-    chattr -i /etc/resolv.conf >/dev/null 2>&1
-    
-    # Restore systemd-resolved if available
-    if systemctl list-unit-files | grep -q systemd-resolved; then
-        echo -e "${C_BLUE}🔄 Re-enabling systemd-resolved...${C_RESET}"
-        systemctl enable systemd-resolved >/dev/null 2>&1
-        systemctl start systemd-resolved >/dev/null 2>&1
-        echo -e "${C_GREEN}✅ systemd-resolved re-enabled${C_RESET}"
-    else
-        # Configure a default DNS
-        cat > /etc/resolv.conf <<EOF
-nameserver 8.8.8.8
-nameserver 1.1.1.1
-EOF
-        echo -e "${C_GREEN}✅ DNS configured with 8.8.8.8 and 1.1.1.1${C_RESET}"
-    fi
-    
-
-    
-    echo -e "\n${C_BLUE}🧹 Reloading systemd...${C_RESET}"
-    systemctl daemon-reload
-    
-    # Check that the ports were freed
-    echo -e "\n${C_BLUE}🔍 Checking ports...${C_RESET}"
-    if ! ss -lunp 2>/dev/null | grep -q ':53\s'; then
-        echo -e "${C_GREEN}✅ Port 53 freed${C_RESET}"
-    else
-        echo -e "${C_YELLOW}⚠️ Port 53 is still in use by:${C_RESET}"
-        ss -lunp 2>/dev/null | grep ':53\s'
-    fi
-    
-
-    
-    echo -e "\n${C_GREEN}==============================================${C_RESET}"
-    echo -e "${C_GREEN}✅ DNSTT was uninstalled successfully${C_RESET}"
-    echo -e "${C_GREEN}==============================================${C_RESET}"
-    
-    echo -e "\n${C_BLUE}Uninstallation summary:${C_RESET}"
-    echo -e "  ${C_GREEN}✓${C_RESET} Services stopped and disabled"
-    echo -e "  ${C_GREEN}✓${C_RESET} DNS records removed (if auto-generated)"
-    echo -e "  ${C_GREEN}✓${C_RESET} Service files removed"
-    echo -e "  ${C_GREEN}✓${C_RESET} Binaries removed"
-    echo -e "  ${C_GREEN}✓${C_RESET} Cryptographic keys removed"
-    echo -e "  ${C_GREEN}✓${C_RESET} DNS configuration restored"
-    
-    # Show logs if present
-    if journalctl -u dnstt.service --no-pager 2>/dev/null | grep -q .; then
-        echo -e "\n${C_DIM}💡 Logs are still available via:${C_RESET}"
-        echo -e "   ${C_DIM}journalctl -u dnstt.service${C_RESET}"
-    fi
-    
-    echo -e "\n${C_YELLOW}ℹ️ Remember to:${C_RESET}"
-    echo -e "  • Check that port 53 is available"
-    echo -e "  • Remove iptables/firewall rules if needed"
-    echo -e "  • Restart the server if issues persist"
-    echo
-}
-
-
-install_falcon_proxy() {
-    clear; show_banner
-    echo -e "${C_BOLD}${C_PURPLE}--- 🦅 Installing Falcon Proxy (Websockets/Socks) ---${C_RESET}"
-    
-    if [ -f "$FALCONPROXY_SERVICE_FILE" ]; then
-        echo -e "\n${C_YELLOW}ℹ️ Falcon Proxy is already installed.${C_RESET}"
-        if [ -f "$FALCONPROXY_CONFIG_FILE" ]; then
-            source "$FALCONPROXY_CONFIG_FILE"
-            echo -e "   It is configured to run on port(s): ${C_YELLOW}$PORTS${C_RESET}"
-            echo -e "   Installed Version: ${C_YELLOW}${INSTALLED_VERSION:-Unknown}${C_RESET}"
-            echo -e "   Version Type: ${C_YELLOW}${VERSION_TYPE:-Unknown}${C_RESET}"
-        fi
-        read -p "👉 Do you want to reinstall/update? (y/n): " confirm_reinstall
-        if [[ "$confirm_reinstall" != "y" ]]; then return; fi
-    fi
-
-    echo -e "\n${C_GREEN}⚙️ Detecting system architecture...${C_RESET}"
-    local arch=$(uname -m)
-    local binary_name=""
-    if [[ "$arch" == "x86_64" ]]; then
-        binary_name="falconproxy"
-        echo -e "${C_BLUE}ℹ️ Detected x86_64 (amd64) architecture.${C_RESET}"
-    elif [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
-        binary_name="falconproxyarm"
-        echo -e "${C_BLUE}ℹ️ Detected ARM64 architecture.${C_RESET}"
-    else
-        echo -e "\n${C_RED}❌ Unsupported architecture: $arch. Cannot install Falcon Proxy.${C_RESET}"
-        return
-    fi
-
-    # --- Sélection de la version ---
-    echo -e "\n${C_CYAN}📦 Select Falcon Proxy version:${C_RESET}"
-    echo -e "  ${C_GREEN}[1]${C_RESET} 🚀 Fast Rust Edition (High Performance - Multi-threaded)"
-    echo -e "  ${C_GREEN}[2]${C_RESET} 🔌 WebSocket v2.0 Edition (WebSocket & WSS Support)"
-    echo -e "  ${C_RED} [0]${C_RESET} ↩️ Cancel"
-    
-    local version_choice
-    while true; do
-        read -p "👉 Enter your choice [1]: " version_choice
-        version_choice=${version_choice:-1}
-        if [[ "$version_choice" == "0" ]]; then return; fi
-        if [[ "$version_choice" =~ ^[12]$ ]]; then
-            break
-        else
-            echo -e "${C_RED}❌ Invalid selection. Please choose 1 or 2.${C_RESET}"
-        fi
-    done
-
-    # --- Déterminer les chemins selon la version choisie ---
-    local SELECTED_VERSION=""
-    local VERSION_TYPE=""
-    local version_folder=""
-    
-    case $version_choice in
-        1)
-            VERSION_TYPE="fast-rust"
-            version_folder="fast-rust"
-            SELECTED_VERSION="v1.0.0"
-            echo -e "\n${C_GREEN}🚀 Selected: Fast Rust Edition${C_RESET}"
-            echo -e "${C_BLUE}ℹ️ Optimized for high performance with Rust's zero-cost abstractions${C_RESET}"
-            ;;
-        2)
-            VERSION_TYPE="websocket-v2"
-            version_folder="websocket-v2"
-            SELECTED_VERSION="v2.0.0"
-            echo -e "\n${C_GREEN}🔌 Selected: WebSocket v2.0 Edition${C_RESET}"
-            echo -e "${C_BLUE}ℹ️ Full WebSocket support with WSS (Secure WebSocket)${C_RESET}"
-            ;;
-    esac
-
-    # --- Vérifier si le binaire existe en local ---
-    local local_binary_path="$FALCONPROXY_BUNDLE_DIR/$version_folder/$binary_name"
-    local use_bundled=false
-    
-    if [ -f "$local_binary_path" ]; then
-        use_bundled=true
-        echo -e "\n${C_GREEN}📦 Binaire local détecté dans ${FALCONPROXY_BUNDLE_DIR}/$version_folder/, installation hors-ligne.${C_RESET}"
-        
-        if [ -f "$FALCONPROXY_BUNDLE_DIR/$version_folder/VERSION" ]; then
-            SELECTED_VERSION=$(cat "$FALCONPROXY_BUNDLE_DIR/$version_folder/VERSION")
-            echo -e "${C_BLUE}ℹ️ Version: $SELECTED_VERSION${C_RESET}"
-        fi
-    fi
-
-    # --- Gestion des ports ---
-    local default_ports=""
-    if [[ "$VERSION_TYPE" == "fast-rust" ]]; then
-        default_ports="8080"
-        echo -e "\n${C_CYAN}💡 Fast Rust supports multiple ports for better concurrency${C_RESET}"
-    else
-        default_ports="8080 8443"
-        echo -e "\n${C_CYAN}💡 WebSocket v2.0 supports HTTP, WebSocket, and WSS${C_RESET}"
-    fi
-    
-    local ports
-    read -p "👉 Enter port(s) for Falcon Proxy (e.g., 8080 or 9999) [$default_ports]: " ports
-    ports=${ports:-$default_ports}
-
-    local port_array=($ports)
-    for port in "${port_array[@]}"; do
-        if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-            echo -e "\n${C_RED}❌ Invalid port number: $port. Aborting.${C_RESET}"
-            return
-        fi
-        check_and_free_ports "$port" || return
-        check_and_open_firewall_port "$port" tcp || return
-    done
-
-    # --- Installation du binaire ---
-    if $use_bundled; then
-        echo -e "\n${C_GREEN}📥 Copie du binaire local Falcon Proxy ($binary_name)...${C_RESET}"
-        # Auto-réparation : une ancienne version buguée pouvait laisser un DOSSIER à
-        # l'emplacement de FALCONPROXY_BINARY (au lieu d'un simple binaire), ce qui
-        # faisait échouer la copie.
-        [ -d "$FALCONPROXY_BINARY" ] && rm -rf "$FALCONPROXY_BINARY"
-        cp -f "$local_binary_path" "$FALCONPROXY_BINARY"
-        if [ $? -ne 0 ]; then
-            echo -e "\n${C_RED}❌ Échec de la copie du binaire local ${local_binary_path}.${C_RESET}"
-            return
-        fi
-    else
-        echo -e "\n${C_BLUE}🌐 Téléchargement depuis GitHub...${C_RESET}"
-        
-        # Construire l'URL de téléchargement
-        local download_url=""
-        if [[ "$VERSION_TYPE" == "fast-rust" ]]; then
-            download_url="https://github.com/firewallfalcons/FirewallFalcon-Manager/releases/download/$SELECTED_VERSION/${binary_name}-fast"
-        else
-            download_url="https://github.com/firewallfalcons/FirewallFalcon-Manager/releases/download/$SELECTED_VERSION/${binary_name}-ws2"
-        fi
-        
-        echo -e "${C_YELLOW}ℹ️ Downloading from: $download_url${C_RESET}"
-        
-        [ -d "$FALCONPROXY_BINARY" ] && rm -rf "$FALCONPROXY_BINARY"
-        wget -q --show-progress -O "$FALCONPROXY_BINARY" "$download_url"
-        if [ $? -ne 0 ]; then
-            echo -e "\n${C_RED}❌ Failed to download the binary. Please ensure version $SELECTED_VERSION has the correct asset.${C_RESET}"
-            return
-        fi
-    fi
-    
-    chmod +x "$FALCONPROXY_BINARY"
-
-    # --- Création du service systemd ---
-    echo -e "\n${C_GREEN}📝 Creating systemd service file...${C_RESET}"
-    
-    local service_desc="Falcon Proxy"
-    if [[ "$VERSION_TYPE" == "fast-rust" ]]; then
-        service_desc="Falcon Proxy - Fast Rust Edition"
-    else
-        service_desc="Falcon Proxy - WebSocket v2.0 Edition"
-    fi
-    
-    cat > "$FALCONPROXY_SERVICE_FILE" <<EOF
-[Unit]
-Description=$service_desc ($SELECTED_VERSION)
-After=network.target
-
-[Service]
-User=root
-Type=simple
-ExecStart=$FALCONPROXY_BINARY -p $ports
-Restart=always
-RestartSec=2s
-
-[Install]
-WantedBy=default.target
-EOF
-
-    echo -e "\n${C_GREEN}💾 Saving configuration...${C_RESET}"
-    cat > "$FALCONPROXY_CONFIG_FILE" <<EOF
-PORTS="$ports"
-INSTALLED_VERSION="$SELECTED_VERSION"
-VERSION_TYPE="$VERSION_TYPE"
-ARCHITECTURE="$arch"
-EOF
-
-    echo -e "\n${C_GREEN}▶️ Enabling and starting Falcon Proxy service...${C_RESET}"
-    systemctl daemon-reload
-    systemctl enable falconproxy.service
-    systemctl restart falconproxy.service
-    sleep 2
-    
-    if systemctl is-active --quiet falconproxy; then
-        echo -e "\n${C_GREEN}✅ SUCCESS: Falcon Proxy $SELECTED_VERSION is installed and active.${C_RESET}"
-        echo -e "   Type: ${C_YELLOW}$VERSION_TYPE${C_RESET}"
-        echo -e "   Listening on port(s): ${C_YELLOW}$ports${C_RESET}"
-        echo -e "   Binary: ${C_YELLOW}$FALCONPROXY_BINARY${C_RESET}"
-        
-        # Afficher des informations spécifiques selon la version
-        if [[ "$VERSION_TYPE" == "websocket-v2" ]]; then
-            echo -e "\n${C_YELLOW}🔌 WebSocket v2.0 endpoints:${C_RESET}"
-            echo -e "  • HTTP:       http://localhost:${port_array[0]}"
-            if [ ${#port_array[@]} -gt 1 ]; then
-                echo -e "  • WebSocket:  ws://localhost:${port_array[1]}"
-                echo -e "  • WSS:        wss://your-domain:${port_array[1]}"
-            fi
-        else
-            echo -e "\n${C_YELLOW}🚀 Fast Rust endpoints:${C_RESET}"
-            echo -e "  • Proxy:      http://localhost:${port_array[0]}"
-            if [ ${#port_array[@]} -gt 1 ]; then
-                echo -e "  • Additional ports: ${C_YELLOW}${ports}${C_RESET}"
-            fi
-        fi
-    else
-        echo -e "\n${C_RED}❌ ERROR: Falcon Proxy service failed to start.${C_RESET}"
-        echo -e "${C_YELLOW}ℹ️ Displaying last 15 lines of the service log for diagnostics:${C_RESET}"
-        journalctl -u falconproxy.service -n 15 --no-pager
-    fi
-}
-
-uninstall_falcon_proxy() {
-    echo -e "\n${C_BOLD}${C_PURPLE}--- 🗑️ Uninstalling Falcon Proxy ---${C_RESET}"
-    if [ ! -f "$FALCONPROXY_SERVICE_FILE" ]; then
-        echo -e "${C_YELLOW}ℹ️ Falcon Proxy is not installed, skipping.${C_RESET}"
-        return
-    fi
-    echo -e "${C_GREEN}🛑 Stopping and disabling Falcon Proxy service...${C_RESET}"
-    systemctl stop falconproxy.service >/dev/null 2>&1
-    systemctl disable falconproxy.service >/dev/null 2>&1
-    echo -e "${C_GREEN}🗑️ Removing service file...${C_RESET}"
-    rm -f "$FALCONPROXY_SERVICE_FILE"
-    systemctl daemon-reload
-    echo -e "${C_GREEN}🗑️ Removing binary and config files...${C_RESET}"
-    rm -f "$FALCONPROXY_BINARY"
-    rm -f "$FALCONPROXY_CONFIG_FILE"
-    echo -e "${C_GREEN}✅ Falcon Proxy has been uninstalled successfully.${C_RESET}"
-}
-
-# --- PY SOCKS/WS Proxy Installation Logic ---
 _write_pyproxy_script() {
     mkdir -p "$PYPROXY_DIR"
     cat > "$PYPROXY_SCRIPT" <<'PYEOF'
@@ -4662,8 +3385,7 @@ EOF
 
     # Port Forwarding / Firewall
     echo -e "${C_BLUE}🔥 Configuring Firewall Rules (Redirecting ${ZIVPN_RANGE_START}-${ZIVPN_RANGE_END} -> ${ZIVPN_LISTEN_PORT})...${C_RESET}"
-    _ff_flush_dnat_to_port "$ZIVPN_LISTEN_PORT"
-    check_and_open_firewall_udp_range "$ZIVPN_RANGE_START" "$ZIVPN_RANGE_END" "$ZIVPN_LISTEN_PORT"
+    _ff_rebuild_udp_dnat_rules
     if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
         ufw allow "${ZIVPN_LISTEN_PORT}/udp" >/dev/null
     fi
@@ -4704,6 +3426,9 @@ uninstall_zivpn() {
     (crontab -l 2>/dev/null | grep -v "$ZIVPN_CLEANUP_CRON_MARKER") | crontab - 2>/dev/null
     
     systemctl daemon-reload
+
+    echo -e "${C_BLUE}🔥 Removing firewall redirect rules (reclaiming range for udp-custom if installed)...${C_RESET}"
+    _ff_rebuild_udp_dnat_rules
     
     # Clean cache (from original uninstall script logic)
     echo -e "${C_BLUE}🧹 Cleaning memory cache...${C_RESET}"
@@ -4840,17 +3565,16 @@ CLEOF
 }
 
 zivpn_manage_passwords() {
-    clear
-    show_banner
-
-    echo -e "${C_BOLD}${C_PURPLE}--- 🔑 ZiVPN Password Management ---${C_RESET}"
-
     if ! command -v jq >/dev/null 2>&1; then
+        clear; show_banner
+        echo -e "${C_BOLD}${C_PURPLE}--- 🔑 ZiVPN Password Management ---${C_RESET}"
         echo -e "${C_RED}❌ jq not installed${C_RESET}"
         return
     fi
 
     if [ ! -f "$ZIVPN_CONFIG_FILE" ]; then
+        clear; show_banner
+        echo -e "${C_BOLD}${C_PURPLE}--- 🔑 ZiVPN Password Management ---${C_RESET}"
         echo -e "${C_RED}❌ Config not found${C_RESET}"
         return
     fi
@@ -4860,124 +3584,138 @@ zivpn_manage_passwords() {
     if ! crontab -l 2>/dev/null | grep -q "$ZIVPN_CLEANUP_CRON_MARKER"; then
         _zivpn_install_cleanup_cron
     fi
-    # Sweep now so the list below is accurate.
-    zivpn_cleanup_expired_passwords
 
-    # Charger passwords
-    mapfile -t passwords < <(jq -r '.auth.config[]' "$ZIVPN_CONFIG_FILE")
+    # Stays in this manager - redrawing the (refreshed) password list after every action -
+    # until the user explicitly picks 0, instead of dropping back to the main menu after a
+    # single add/remove/edit like it used to.
+    while true; do
+        clear
+        show_banner
 
-    echo -e "\n${C_CYAN}Current passwords:${C_RESET}"
+        echo -e "${C_BOLD}${C_PURPLE}--- 🔑 ZiVPN Password Management ---${C_RESET}"
 
-    if [ ${#passwords[@]} -gt 0 ]; then
-        for i in "${!passwords[@]}"; do
-            local p_expires p_quota
-            p_expires=$(_zivpn_meta_get "${passwords[$i]}" "expires" "never")
-            p_quota=$(_zivpn_meta_get "${passwords[$i]}" "quota_gb" "unlimited")
-            [[ "$p_quota" != "unlimited" ]] && p_quota="${p_quota} GB"
-            echo -e "  ${C_GREEN}[$((i+1))]${C_RESET} ${C_YELLOW}${passwords[$i]}${C_RESET} ${C_DIM}(expires: ${C_RESET}${p_expires}${C_DIM}, quota: ${C_RESET}${p_quota}${C_DIM})${C_RESET}"
-        done
-    else
-        echo -e "  ${C_DIM}No passwords${C_RESET}"
-    fi
+        # Sweep now so the list below is accurate.
+        zivpn_cleanup_expired_passwords
 
-    echo -e "\n${C_BOLD}Options:${C_RESET}"
-    echo -e "  ${C_GREEN}[1] Add${C_RESET}"
-    echo -e "  ${C_GREEN}[2] Remove${C_RESET}"
-    echo -e "  ${C_GREEN}[3] Modify (change password value)${C_RESET}"
-    echo -e "  ${C_GREEN}[4] Restart${C_RESET}"
-    echo -e "  ${C_GREEN}[5] Edit expiration date / data quota${C_RESET}"
-    echo -e "  ${C_RED}[0] Back${C_RESET}"
+        # Charger passwords
+        mapfile -t passwords < <(jq -r '.auth.config[]' "$ZIVPN_CONFIG_FILE")
 
-    read -r -p "👉 Choice: " choice
+        echo -e "\n${C_CYAN}Current passwords:${C_RESET}"
 
-    case "$choice" in
+        if [ ${#passwords[@]} -gt 0 ]; then
+            for i in "${!passwords[@]}"; do
+                local p_expires p_quota
+                p_expires=$(_zivpn_meta_get "${passwords[$i]}" "expires" "never")
+                p_quota=$(_zivpn_meta_get "${passwords[$i]}" "quota_gb" "unlimited")
+                [[ "$p_quota" != "unlimited" ]] && p_quota="${p_quota} GB"
+                echo -e "  ${C_GREEN}[$((i+1))]${C_RESET} ${C_YELLOW}${passwords[$i]}${C_RESET} ${C_DIM}(expires: ${C_RESET}${p_expires}${C_DIM}, quota: ${C_RESET}${p_quota}${C_DIM})${C_RESET}"
+            done
+        else
+            echo -e "  ${C_DIM}No passwords${C_RESET}"
+        fi
 
-        1)
-            read -r -p "👉 New password: " new_pwd
-            [ -z "$new_pwd" ] && echo "❌ Empty" && return
+        echo -e "\n${C_BOLD}Options:${C_RESET}"
+        echo -e "  ${C_GREEN}[1] Add${C_RESET}"
+        echo -e "  ${C_GREEN}[2] Remove${C_RESET}"
+        echo -e "  ${C_GREEN}[3] Modify (change password value)${C_RESET}"
+        echo -e "  ${C_GREEN}[4] Restart${C_RESET}"
+        echo -e "  ${C_GREEN}[5] Edit expiration date / data quota${C_RESET}"
+        echo -e "  ${C_RED}[0] Back${C_RESET}"
 
-            # Ajouter
-            jq --arg pwd "$new_pwd" \
-            '.auth.config += [$pwd]' \
-            "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
+        read -r -p "👉 Choice: " choice
 
-            _zivpn_prompt_expiry_quota "never" "unlimited"
-            _zivpn_meta_set "$new_pwd" "$_Z_EXPIRES" "$_Z_QUOTA"
+        case "$choice" in
 
-            systemctl restart zivpn
-            echo "✅ Added (expires: $_Z_EXPIRES, quota: $_Z_QUOTA)"
-            ;;
+            1)
+                read -r -p "👉 New password: " new_pwd
+                if [ -z "$new_pwd" ]; then
+                    echo "❌ Empty"; sleep 1; continue
+                fi
 
-        2)
-            read -r -p "👉 Number: " num
+                # Ajouter
+                jq --arg pwd "$new_pwd" \
+                '.auth.config += [$pwd]' \
+                "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
 
-            if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
-                echo "❌ Invalid"
-                return
-            fi
+                _zivpn_prompt_expiry_quota "never" "unlimited"
+                _zivpn_meta_set "$new_pwd" "$_Z_EXPIRES" "$_Z_QUOTA"
 
-            idx=$((num-1))
-            old_pwd="${passwords[$idx]}"
+                systemctl restart zivpn
+                echo "✅ Added (expires: $_Z_EXPIRES, quota: $_Z_QUOTA)"
+                ;;
 
-            jq --argjson i "$idx" \
-            'del(.auth.config[$i])' \
-            "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
-            _zivpn_meta_delete "$old_pwd"
+            2)
+                read -r -p "👉 Number: " num
 
-            systemctl restart zivpn
-            echo "✅ Removed"
-            ;;
+                if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
+                    echo "❌ Invalid"; sleep 1; continue
+                fi
 
-        3)
-            read -r -p "👉 Number: " num
-            read -r -p "👉 New password: " new_pwd
+                idx=$((num-1))
+                old_pwd="${passwords[$idx]}"
 
-            if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
-                echo "❌ Invalid"
-                return
-            fi
+                jq --argjson i "$idx" \
+                'del(.auth.config[$i])' \
+                "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
+                _zivpn_meta_delete "$old_pwd"
 
-            [ -z "$new_pwd" ] && echo "❌ Empty" && return
+                systemctl restart zivpn
+                echo "✅ Removed"
+                ;;
 
-            idx=$((num-1))
-            old_pwd="${passwords[$idx]}"
+            3)
+                read -r -p "👉 Number: " num
+                read -r -p "👉 New password: " new_pwd
 
-            jq --argjson i "$idx" --arg new "$new_pwd" \
-            '.auth.config[$i] = $new' \
-            "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
-            _zivpn_meta_rename "$old_pwd" "$new_pwd"
+                if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
+                    echo "❌ Invalid"; sleep 1; continue
+                fi
 
-            systemctl restart zivpn
-            echo "✅ Modified"
-            ;;
+                if [ -z "$new_pwd" ]; then
+                    echo "❌ Empty"; sleep 1; continue
+                fi
 
-        4)
-            systemctl restart zivpn
-            echo "✅ Restarted"
-            ;;
+                idx=$((num-1))
+                old_pwd="${passwords[$idx]}"
 
-        5)
-            read -r -p "👉 Number: " num
+                jq --argjson i "$idx" --arg new "$new_pwd" \
+                '.auth.config[$i] = $new' \
+                "$ZIVPN_CONFIG_FILE" > /tmp/zivpn.json && mv /tmp/zivpn.json "$ZIVPN_CONFIG_FILE"
+                _zivpn_meta_rename "$old_pwd" "$new_pwd"
 
-            if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
-                echo "❌ Invalid"
-                return
-            fi
+                systemctl restart zivpn
+                echo "✅ Modified"
+                ;;
 
-            idx=$((num-1))
-            target_pwd="${passwords[$idx]}"
-            cur_expires=$(_zivpn_meta_get "$target_pwd" "expires" "never")
-            cur_quota=$(_zivpn_meta_get "$target_pwd" "quota_gb" "unlimited")
+            4)
+                systemctl restart zivpn
+                echo "✅ Restarted"
+                ;;
 
-            echo -e "${C_DIM}Editing '${target_pwd}' — current expires: ${cur_expires}, current quota: ${cur_quota}${C_RESET}"
-            _zivpn_prompt_expiry_quota "$cur_expires" "$cur_quota"
-            _zivpn_meta_set "$target_pwd" "$_Z_EXPIRES" "$_Z_QUOTA"
-            echo "✅ Updated (expires: $_Z_EXPIRES, quota: $_Z_QUOTA)"
-            ;;
+            5)
+                read -r -p "👉 Number: " num
 
-        0) return ;;
-        *) invalid_option ;;
-    esac
+                if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt ${#passwords[@]} ]; then
+                    echo "❌ Invalid"; sleep 1; continue
+                fi
+
+                idx=$((num-1))
+                target_pwd="${passwords[$idx]}"
+                cur_expires=$(_zivpn_meta_get "$target_pwd" "expires" "never")
+                cur_quota=$(_zivpn_meta_get "$target_pwd" "quota_gb" "unlimited")
+
+                echo -e "${C_DIM}Editing '${target_pwd}' — current expires: ${cur_expires}, current quota: ${cur_quota}${C_RESET}"
+                _zivpn_prompt_expiry_quota "$cur_expires" "$cur_quota"
+                _zivpn_meta_set "$target_pwd" "$_Z_EXPIRES" "$_Z_QUOTA"
+                echo "✅ Updated (expires: $_Z_EXPIRES, quota: $_Z_QUOTA)"
+                ;;
+
+            0) return ;;
+            *) invalid_option; continue ;;
+        esac
+
+        read -r -p $'\nPress Enter to continue...' _
+    done
 }
 
 purge_nginx() {
@@ -5496,16 +4234,6 @@ protocol_menu() {
         if systemctl is-active --quiet haproxy; then
             ssl_tunnel_status="${C_STATUS_A}(Active)${C_RESET}"
         fi
-        
-        local dnstt_status; if systemctl is-active --quiet dnstt.service; then dnstt_status="${C_STATUS_A}(Active)${C_RESET}"; else dnstt_status="${C_STATUS_I}(Inactive)${C_RESET}"; fi
-        
-        local falconproxy_status="${C_STATUS_I}(Inactive)${C_RESET}"
-        local falconproxy_ports=""
-        if systemctl is-active --quiet falconproxy; then
-            if [ -f "$FALCONPROXY_CONFIG_FILE" ]; then source "$FALCONPROXY_CONFIG_FILE"; fi
-            falconproxy_ports=" ($PORTS)"
-            falconproxy_status="${C_STATUS_A}(Active - ${INSTALLED_VERSION:-latest})${C_RESET}"
-        fi
 
         local nginx_status; if systemctl is-active --quiet nginx; then nginx_status="${C_STATUS_A}(Active)${C_RESET}"; else nginx_status="${C_STATUS_I}(Inactive)${C_RESET}"; fi
         local xui_status; if command -v x-ui &> /dev/null; then xui_status="${C_STATUS_A}(Installed)${C_RESET}"; else xui_status="${C_STATUS_I}(Not Installed)${C_RESET}"; fi
@@ -5519,19 +4247,15 @@ protocol_menu() {
         printf "  ${C_CHOICE}[ 4]${C_RESET} %-45s\n" "🗑️ Uninstall udp-custom"
         printf "  ${C_CHOICE}[ 5]${C_RESET} %-45s %s\n" "🔒 Install ${ssl_tunnel_text}" "$ssl_tunnel_status"
         printf "  ${C_CHOICE}[ 6]${C_RESET} %-45s\n" "🗑️ Uninstall HAProxy Edge Stack"
-        printf "  ${C_CHOICE}[ 7]${C_RESET} %-45s %s\n" "📡 Install/View DNSTT (Port 53)" "$dnstt_status"
-        printf "  ${C_CHOICE}[ 8]${C_RESET} %-45s\n" "🗑️ Uninstall DNSTT"
-        printf "  ${C_CHOICE}[ 9]${C_RESET} %-45s %s\n" "🦅 Install Falcon Proxy (Select Version)" "$falconproxy_status"
-        printf "  ${C_CHOICE}[10]${C_RESET} %-45s\n" "🗑️ Uninstall Falcon Proxy"
-        printf "  ${C_CHOICE}[11]${C_RESET} %-45s %s\n" "🛡️ Install ZiVPN (UDP 5667)" "$zivpn_status"
-        printf "  ${C_CHOICE}[12]${C_RESET} %-45s\n" "🗑️ Uninstall ZiVPN"
-        printf "  ${C_CHOICE}[13]${C_RESET} %-45s %s\n" "🌐 Install/Manage Internal Nginx (8880/8443)" "$nginx_status"
-        printf "  ${C_CHOICE}[14]${C_RESET} %-45s %s\n" "🐍 Install PY SOCKS/WS Proxy (legacy)" "$pyproxy_status"
-        printf "  ${C_CHOICE}[15]${C_RESET} %-45s\n" "🗑️ Uninstall PY SOCKS/WS Proxy"
+        printf "  ${C_CHOICE}[ 7]${C_RESET} %-45s %s\n" "🛡️ Install ZiVPN (UDP 5667)" "$zivpn_status"
+        printf "  ${C_CHOICE}[ 8]${C_RESET} %-45s\n" "🗑️ Uninstall ZiVPN"
+        printf "  ${C_CHOICE}[ 9]${C_RESET} %-45s %s\n" "🌐 Install/Manage Internal Nginx (8880/8443)" "$nginx_status"
+        printf "  ${C_CHOICE}[10]${C_RESET} %-45s %s\n" "🐍 Install PY SOCKS/WS Proxy (legacy)" "$pyproxy_status"
+        printf "  ${C_CHOICE}[11]${C_RESET} %-45s\n" "🗑️ Uninstall PY SOCKS/WS Proxy"
 
         echo -e "  ${C_ACCENT}--- 💻 MANAGEMENT PANELS ---${C_RESET}"
-        printf "  ${C_CHOICE}[16]${C_RESET} %-45s %s\n" "💻 Install X-UI Panel" "$xui_status"
-        printf "  ${C_CHOICE}[17]${C_RESET} %-45s\n" "🗑️ Uninstall X-UI Panel"
+        printf "  ${C_CHOICE}[12]${C_RESET} %-45s %s\n" "💻 Install X-UI Panel" "$xui_status"
+        printf "  ${C_CHOICE}[13]${C_RESET} %-45s\n" "🗑️ Uninstall X-UI Panel"
 
         echo -e " ${C_DIM}══════════════════════════════════════════════════════${C_RESET}"
         echo -e "   ${C_WARN}[ 0]${C_RESET} ↩️ Return to Main Menu"
@@ -5544,12 +4268,10 @@ protocol_menu() {
             1) install_badvpn; press_enter ;; 2) uninstall_badvpn; press_enter ;;
             3) install_udp_custom; press_enter ;; 4) uninstall_udp_custom; press_enter ;;
             5) install_ssl_tunnel; press_enter ;; 6) uninstall_ssl_tunnel; press_enter ;;
-            7) install_dnstt; press_enter ;; 8) uninstall_dnstt; press_enter ;;
-            9) install_falcon_proxy; press_enter ;; 10) uninstall_falcon_proxy; press_enter ;;
-            11) install_zivpn; press_enter ;; 12) uninstall_zivpn; press_enter ;;
-            13) nginx_proxy_menu ;;
-            14) install_pyproxy; press_enter ;; 15) uninstall_pyproxy; press_enter ;;
-            16) install_xui_panel; press_enter ;; 17) uninstall_xui_panel; press_enter ;;
+            7) install_zivpn; press_enter ;; 8) uninstall_zivpn; press_enter ;;
+            9) nginx_proxy_menu ;;
+            10) install_pyproxy; press_enter ;; 11) uninstall_pyproxy; press_enter ;;
+            12) install_xui_panel; press_enter ;; 13) uninstall_xui_panel; press_enter ;;
             0) return ;;
             *) invalid_option ;;
         esac
@@ -5565,7 +4287,7 @@ uninstall_script() {
     echo -e " - The main command ($(command -v menu))"
     echo -e " - All configuration and user data ($DB_DIR)"
     echo -e " - The active limiter service ($LIMITER_SERVICE)"
-    echo -e " - All installed services (badvpn, udp-custom, HAProxy Edge Stack, Nginx, DNSTT)"
+    echo -e " - All installed services (badvpn, udp-custom, HAProxy Edge Stack, Nginx, ZiVPN)"
     echo -e "\n${C_RED}This action is irreversible.${C_RESET}"
     echo ""
     read -p "👉 Type 'yes' to confirm and proceed with uninstallation: " confirm
@@ -5614,11 +4336,9 @@ uninstall_script() {
     chattr -i /etc/resolv.conf &>/dev/null
 
     purge_nginx "silent"
-    uninstall_dnstt
     uninstall_badvpn
     uninstall_udp_custom
     uninstall_ssl_tunnel
-    uninstall_falcon_proxy
     uninstall_pyproxy
     uninstall_zivpn
     delete_dns_record
@@ -5790,10 +4510,9 @@ view_user_bandwidth() {
         [[ -z "$used_bytes" ]] && used_bytes=0
     fi
     
-    local used_mb; used_mb=$(awk "BEGIN {printf \"%.2f\", $used_bytes / 1048576}")
-    local used_gb; used_gb=$(awk "BEGIN {printf \"%.3f\", $used_bytes / 1073741824}")
+    local used_display; used_display=$(_ff_fmt_bytes "$used_bytes")
     
-    echo -e "  ${C_CYAN}Data Used:${C_RESET}        ${C_WHITE}${used_gb} GB${C_RESET} (${used_mb} MB)"
+    echo -e "  ${C_CYAN}Data Used:${C_RESET}        ${C_WHITE}${used_display}${C_RESET}"
     
     if [[ "$bandwidth_gb" == "0" ]]; then
         echo -e "  ${C_CYAN}Bandwidth Limit:${C_RESET}  ${C_GREEN}Unlimited${C_RESET}"
@@ -5803,10 +4522,10 @@ view_user_bandwidth() {
         local percentage; percentage=$(awk "BEGIN {printf \"%.1f\", ($used_bytes / $quota_bytes) * 100}")
         local remaining_bytes; remaining_bytes=$((quota_bytes - used_bytes))
         if [[ "$remaining_bytes" -lt 0 ]]; then remaining_bytes=0; fi
-        local remaining_gb; remaining_gb=$(awk "BEGIN {printf \"%.3f\", $remaining_bytes / 1073741824}")
+        local remaining_display; remaining_display=$(_ff_fmt_bytes "$remaining_bytes")
         
         echo -e "  ${C_CYAN}Bandwidth Limit:${C_RESET}  ${C_YELLOW}${bandwidth_gb} GB${C_RESET}"
-        echo -e "  ${C_CYAN}Remaining:${C_RESET}        ${C_WHITE}${remaining_gb} GB${C_RESET}"
+        echo -e "  ${C_CYAN}Remaining:${C_RESET}        ${C_WHITE}${remaining_display}${C_RESET}"
         echo -e "  ${C_CYAN}Usage:${C_RESET}            ${C_WHITE}${percentage}%${C_RESET}"
         
         # Progress bar
@@ -5934,25 +4653,14 @@ generate_client_config() {
         echo -e "   • Obfs: (None/Plain)"
     fi
 
-    # 4. DNSTT
-    if systemctl is-active --quiet dnstt; then
-        if [ -f "$DNSTT_CONFIG_FILE" ]; then
-            source "$DNSTT_CONFIG_FILE"
-            echo -e "\n🔹 ${C_BOLD}DNSTT (SlowDNS)${C_RESET}:"
-            echo -e "   • Nameserver: $TUNNEL_DOMAIN"
-            echo -e "   • PubKey: $PUBLIC_KEY"
-            echo -e "   • DNS IP: 1.1.1.1 / 8.8.8.8"
-        fi
-    fi
-    
-    # 5. ZiVPN
+    # 4. ZiVPN
     if systemctl is-active --quiet zivpn; then
         echo -e "\n🔹 ${C_BOLD}ZiVPN${C_RESET}:"
         echo -e "   • UDP Port: ${ZIVPN_LISTEN_PORT}"
         echo -e "   • Forwarded Ports: ${ZIVPN_RANGE_START}-${ZIVPN_RANGE_END}"
     fi
 
-    # 6. PY SOCKS/WS Proxy
+    # 5. PY SOCKS/WS Proxy
     if [ -f "$PYPROXY_CONFIG_FILE" ] && (systemctl is-active --quiet pyproxy-socks || systemctl is-active --quiet pyproxy-ws); then
         source "$PYPROXY_CONFIG_FILE"
         echo -e "\n🔹 ${C_BOLD}PY SOCKS/WS Proxy${C_RESET}:"
@@ -6334,7 +5042,7 @@ main_menu() {
             9) create_trial_account; press_enter ;;
             10) view_user_bandwidth; press_enter ;;
             11) bulk_create_users; press_enter ;;
-            12) zivpn_manage_passwords; press_enter ;;
+            12) zivpn_manage_passwords ;;
 
             13) protocol_menu ;;
             14) traffic_monitor_menu ;;

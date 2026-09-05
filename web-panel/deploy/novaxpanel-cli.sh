@@ -34,7 +34,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-PROJECT_DIR="/opt/nova-x-tunnel/web-panel"
+PROJECT_DIR="__PROJECT_DIR__"
 ENV_FILE="$PROJECT_DIR/.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
