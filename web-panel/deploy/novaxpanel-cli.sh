@@ -18,9 +18,9 @@ NC='\033[0m'                # No Color
 BOLD='\033[1m'
 
 # Separator functions
-sep() { echo -e "${SEP}══════════════════════════════════════════════════════════════════════${NC}"; }
-sep_double() { echo -e "${SEP}══════════════════════════════════════════════════════════════════════${NC}"; }
-sep_short() { echo -e "${SEP}──────────────────────────────────────────────────────────────────────${NC}"; }
+sep() { echo -e "${SEP}═════════════════════════════════════════════════════════════════${NC}"; }
+sep_double() { echo -e "${SEP}═════════════════════════════════════════════════════════════════${NC}"; }
+sep_short() { echo -e "${SEP}─────────────────────────────────────────────────────────────────${NC}"; }
 
 # Print colored messages
 print_error() { echo -e "${C_RED}❌ $1${NC}"; }
@@ -91,7 +91,7 @@ cmd_status() {
 }
 
 cmd_logs() {
-  print_info "Ctrl+C pour quitter les logs en direct."
+  print_info "Ctrl+C to exit the live logs view."
   sep_short
   journalctl -u novaxpanel -f --no-pager -n 100
 }
