@@ -36,8 +36,8 @@ nova-x-tunnel/
 ├── terminal-panel/                 # Bash interactive SSH menu
 │   ├── install.sh                  # Complete VPS installation
 │   ├── menu.sh                     # Main panel interface (`menu` command)
-│   ├── sshd                    # SSH daemon configuration
-│   └── falconproxy/            # falcon proxy            
+│   └── sshd                    # SSH daemon configuration
+│             
 │
 └── web-panel/                      # Node.js Admin/Reseller interface
     ├── deploy/
