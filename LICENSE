@@ -1,7 +1,6 @@
-GNU GENERAL PUBLIC LICENSE
-Version 3, 29 June 2007
-
 Copyright (c) 2026 NOVA XTUNNEL
+
+This file is part of NOVA XTUNNEL.
 
 NOVA XTUNNEL is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -12,6 +11,3 @@ NOVA XTUNNEL is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with NOVA XTUNNEL. If not, see <https://www.gnu.org/licenses/>.
