@@ -1,7 +1,7 @@
 <!-- NOVA XTUNNEL Banner -->
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/license-MIT-red.svg" alt="License">
+  <img src="https://img.shields.io/badge/license-GPL-3.0-red.svg" alt="License">
   <img src="https://img.shields.io/badge/bash-5.0+-4EAA25.svg" alt="Bash">
   <img src="https://img.shields.io/badge/node.js-16.x+-339933.svg" alt="Node.js">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
@@ -234,7 +234,7 @@ It helps the project grow and motivates future development.
 
 # 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the **GPL-3.0 License** - see the [LICENSE](./LICENSE) file for details.
 
 Copyright (c) 2026 **NOVA XTUNNEL**
 
