@@ -2757,7 +2757,7 @@ backend direct_ssh
 
 backend direct_sshp
     mode tcp
-    server ssh_server 127.0.0.1:8888
+    server ssh_server 127.0.0.1:8080
 
 backend direct_ssht
     mode tcp
