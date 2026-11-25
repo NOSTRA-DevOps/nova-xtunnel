@@ -2947,207 +2947,211 @@ _write_pyproxy_script() {
     cat > "$PYPROXY_SCRIPT" <<'PYEOF'
 #!/usr/bin/env python3
 # encoding: utf-8
-# NOVA XTUNNEL - CONNECT/SOCKS-over-HTTP tunnel (Python 3 port of proxy.py / wsproxy.py)
-import socket
-import threading
-import select
-import sys
+# NOVA XTUNNEL - CONNECT/SOCKS-over-HTTP & WebSocket proxy (Cloudflare / CloudFront ready)
+# asyncio version: no select() 1024-fd limit, no thread per connection, idle-timeout watchdog.
 import argparse
+import asyncio
+import base64
+import hashlib
+import resource
+import socket
+import sys
+import time
 
-BUFLEN = 8196 * 8
-TIMEOUT = 60
+BUFLEN = 65536
+HEADER_TIMEOUT = 15      # max wait for the first client packet
+CONNECT_TIMEOUT = 10     # max wait to reach the SSH target
+WS_GUID = b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+LOCAL_HOSTS = ('127.0.0.1', 'localhost', '0.0.0.0', '::1')
 
 
-class Server(threading.Thread):
-    def __init__(self, host, port, response, default_host):
-        threading.Thread.__init__(self)
-        self.running = False
-        self.host = host
-        self.port = port
-        self.response = response
-        self.default_host = default_host
-        self.threads = []
-        self.threads_lock = threading.Lock()
-        self.log_lock = threading.Lock()
+def raise_nofile():
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = hard if hard != resource.RLIM_INFINITY else 1048576
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+    except Exception:
+        pass
 
-    def run(self):
-        self.soc = socket.socket(socket.AF_INET)
-        self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.soc.settimeout(2)
-        self.soc.bind((self.host, self.port))
-        self.soc.listen(5)
-        self.running = True
+
+def tune_socket(writer):
+    sock = writer.get_extra_info('socket')
+    if not sock:
+        return
+    for args in (
+        (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
+        (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
+        (socket.IPPROTO_TCP, getattr(socket, 'TCP_KEEPIDLE', 4), 30),
+        (socket.IPPROTO_TCP, getattr(socket, 'TCP_KEEPINTVL', 5), 10),
+        (socket.IPPROTO_TCP, getattr(socket, 'TCP_KEEPCNT', 6), 3),
+    ):
         try:
-            while self.running:
-                try:
-                    c, addr = self.soc.accept()
-                    c.setblocking(True)
-                except socket.timeout:
-                    continue
-                conn = ConnectionHandler(c, self, addr)
-                conn.start()
-                self.add_conn(conn)
-        finally:
-            self.running = False
-            self.soc.close()
+            sock.setsockopt(*args)
+        except Exception:
+            pass
 
-    def print_log(self, log):
-        with self.log_lock:
+
+def find_header(head, name):
+    low = head.lower()
+    key = name.lower() + b':'
+    idx = low.find(key)
+    if idx == -1:
+        return ''
+    start = idx + len(key)
+    end = head.find(b'\r\n', start)
+    if end == -1:
+        end = len(head)
+    return head[start:end].decode(errors='ignore').strip()
+
+
+class Proxy:
+    def __init__(self, args):
+        self.default_host = args.default_host
+        self.code = str(args.response_code)
+        self.msg = str(args.response_msg)
+        self.idle = args.idle_timeout
+        self.allow_any = args.allow_any_target
+        self.active = 0
+
+    def build_response(self, head):
+        if self.code == '101':
+            resp = 'HTTP/1.1 101 {}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'.format(self.msg)
+            key = find_header(head, b'Sec-WebSocket-Key')
+            if key:
+                acc = base64.b64encode(hashlib.sha1(key.encode() + WS_GUID).digest()).decode()
+                resp += 'Sec-WebSocket-Accept: {}\r\n'.format(acc)
+            return (resp + '\r\n').encode()
+        return 'HTTP/1.1 {} {}\r\n\r\n'.format(self.code, self.msg).encode()
+
+    def pick_target(self, head):
+        host_port = find_header(head, b'X-Real-Host')
+        if not host_port:
+            first = head.split(b'\r\n', 1)[0].decode(errors='ignore')
+            if first.startswith('CONNECT '):
+                parts = first.split(' ')
+                if len(parts) >= 2 and ':' in parts[1]:
+                    host_port = parts[1]
+        if host_port and not self.allow_any:
+            if host_port.rsplit(':', 1)[0] not in LOCAL_HOSTS:
+                host_port = ''
+        if not host_port:
+            host_port = self.default_host
+        if ':' not in host_port:
+            host_port += ':22'
+        host, _, port = host_port.rpartition(':')
+        return host, int(port)
+
+    async def handle(self, creader, cwriter):
+        peer = cwriter.get_extra_info('peername')
+        log = 'Connection: {}'.format(peer)
+        twriter = None
+        self.active += 1
+        try:
+            tune_socket(cwriter)
+            head = await asyncio.wait_for(creader.read(BUFLEN), HEADER_TIMEOUT)
+            if not head:
+                return
+            real_ip = find_header(head, b'CF-Connecting-IP') or find_header(head, b'X-Forwarded-For')
+            if real_ip:
+                log += ' (Real IP: {})'.format(real_ip.split(',')[0].strip())
+
+            host, port = self.pick_target(head)
+            log += ' - CONNECT {}:{}'.format(host, port)
+
+            if find_header(head, b'X-Split'):
+                try:
+                    await asyncio.wait_for(creader.read(BUFLEN), HEADER_TIMEOUT)
+                except asyncio.TimeoutError:
+                    pass
+
+            treader, twriter = await asyncio.wait_for(
+                asyncio.open_connection(host, port), CONNECT_TIMEOUT)
+            tune_socket(twriter)
+
+            cwriter.write(self.build_response(head))
+            await cwriter.drain()
             print(log, flush=True)
 
-    def add_conn(self, conn):
-        with self.threads_lock:
-            if self.running:
-                self.threads.append(conn)
+            # Forward an SSH banner that was glued to the HTTP header, if any.
+            sep = head.find(b'\r\n\r\n')
+            if sep != -1 and head[sep + 4:sep + 8] == b'SSH-':
+                twriter.write(head[sep + 4:])
+                await twriter.drain()
 
-    def remove_conn(self, conn):
-        with self.threads_lock:
-            if conn in self.threads:
-                self.threads.remove(conn)
-
-    def close(self):
-        self.running = False
-        with self.threads_lock:
-            for c in list(self.threads):
-                c.close()
-
-
-class ConnectionHandler(threading.Thread):
-    def __init__(self, sock_client, server, addr):
-        threading.Thread.__init__(self)
-        self.client_closed = False
-        self.target_closed = True
-        self.client = sock_client
-        self.target = None
-        self.server = server
-        self.log = 'Connection: ' + str(addr)
-
-    def close(self):
-        try:
-            if not self.client_closed:
-                self.client.shutdown(socket.SHUT_RDWR)
-                self.client.close()
-        except OSError:
-            pass
+            await self.pipe(creader, cwriter, treader, twriter)
+        except (ConnectionError, asyncio.TimeoutError, asyncio.IncompleteReadError, OSError) as e:
+            print('{} - error: {}'.format(log, e or type(e).__name__), flush=True)
+        except Exception as e:  # never let one connection kill the server
+            print('{} - error: {!r}'.format(log, e), flush=True)
         finally:
-            self.client_closed = True
-        try:
-            if not self.target_closed and self.target:
-                self.target.shutdown(socket.SHUT_RDWR)
-                self.target.close()
-        except OSError:
-            pass
-        finally:
-            self.target_closed = True
-
-    def run(self):
-        try:
-            client_buffer = self.client.recv(BUFLEN)
-            host_port = self.find_header(client_buffer, b'X-Real-Host')
-            if not host_port:
-                host_port = self.server.default_host
-
-            if self.find_header(client_buffer, b'X-Split'):
-                self.client.recv(BUFLEN)
-
-            if host_port:
-                self.method_connect(host_port)
-            else:
-                self.server.print_log('- No X-Real-Host!')
-                self.client.send(b'HTTP/1.1 400 NoXRealHost!\r\n\r\n')
-        except Exception as e:
-            self.log += ' - error: ' + str(e)
-            self.server.print_log(self.log)
-        finally:
-            self.close()
-            self.server.remove_conn(self)
-
-    @staticmethod
-    def find_header(head, header):
-        idx = head.find(header + b': ')
-        if idx == -1:
-            return ''
-        idx = head.find(b':', idx)
-        head = head[idx + 2:]
-        end = head.find(b'\r\n')
-        if end == -1:
-            return ''
-        return head[:end].decode(errors='ignore')
-
-    def connect_target(self, host):
-        i = host.find(':')
-        if i != -1:
-            port = int(host[i + 1:])
-            host = host[:i]
-        else:
-            port = 443
-
-        addr_info = socket.getaddrinfo(host, port)[0]
-        soc_family, soc_type, proto, _, address = addr_info
-        self.target = socket.socket(soc_family, soc_type, proto)
-        self.target_closed = False
-        self.target.connect(address)
-
-    def method_connect(self, path):
-        self.log += ' - CONNECT ' + path
-        self.connect_target(path)
-        self.client.sendall(self.server.response.encode())
-        self.server.print_log(self.log)
-        self.do_connect()
-
-    def do_connect(self):
-        socs = [self.client, self.target]
-        count = 0
-        error = False
-        while True:
-            count += 1
-            recv, _, err = select.select(socs, [], socs, 3)
-            if err:
-                error = True
-            if recv:
-                for in_ in recv:
+            self.active -= 1
+            for w in (cwriter, twriter):
+                if w is not None:
                     try:
-                        data = in_.recv(BUFLEN)
-                        if data:
-                            if in_ is self.target:
-                                self.client.send(data)
-                            else:
-                                while data:
-                                    sent = self.target.send(data)
-                                    data = data[sent:]
-                            count = 0
-                        else:
-                            error = True
-                            break
-                    except OSError:
-                        error = True
+                        w.close()
+                    except Exception:
+                        pass
+
+    async def pipe(self, creader, cwriter, treader, twriter):
+        last = [time.monotonic()]
+
+        async def copy(r, w):
+            try:
+                while True:
+                    data = await r.read(BUFLEN)
+                    if not data:
                         break
-            if count >= TIMEOUT or error:
-                break
+                    last[0] = time.monotonic()
+                    w.write(data)
+                    await w.drain()
+            except (ConnectionError, OSError):
+                pass
+
+        async def watchdog():
+            if self.idle <= 0:
+                await asyncio.Event().wait()
+            while True:
+                await asyncio.sleep(15)
+                if time.monotonic() - last[0] > self.idle:
+                    return
+
+        tasks = [asyncio.ensure_future(copy(creader, twriter)),
+                 asyncio.ensure_future(copy(treader, cwriter)),
+                 asyncio.ensure_future(watchdog())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def amain(args):
+    raise_nofile()
+    proxy = Proxy(args)
+    server = await asyncio.start_server(
+        proxy.handle, args.bind, args.port, backlog=4096, reuse_address=True)
+    print('NOVA XTUNNEL PY Proxy (asyncio) - listening on {}:{}'.format(args.bind, args.port), flush=True)
+    async with server:
+        await server.serve_forever()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='NOVA XTUNNEL - PY SOCKS/WS proxy')
-    parser.add_argument('-b', '--bind', default='0.0.0.0')
-    parser.add_argument('-p', '--port', type=int, required=True)
-    parser.add_argument('--response-code', default='101')
-    parser.add_argument('--response-msg', default='@NOVAXTUNNEL')
-    parser.add_argument('--default-host', default='127.0.0.1:22')
-    args = parser.parse_args()
-
-    response = "HTTP/1.1 {} {}\r\n\r\n".format(args.response_code, args.response_msg)
-
-    print("NOVA XTUNNEL PY Proxy - listening on {}:{}".format(args.bind, args.port))
-    server = Server(args.bind, args.port, response, args.default_host)
-    server.start()
+    p = argparse.ArgumentParser(description='NOVA XTUNNEL - PY SOCKS/WS proxy (Cloudflare/CloudFront)')
+    p.add_argument('-b', '--bind', default='0.0.0.0')
+    p.add_argument('-p', '--port', type=int, required=True)
+    p.add_argument('--response-code', default='101')
+    p.add_argument('--response-msg', default='@Labokingfreesurf')
+    p.add_argument('--default-host', default='127.0.0.1:22')
+    p.add_argument('--idle-timeout', type=int, default=0,
+                   help='close tunnels with no traffic for N seconds (0 = disabled)')
+    p.add_argument('--allow-any-target', action='store_true',
+                   help='allow X-Real-Host / CONNECT to non-local hosts (open proxy, not recommended)')
+    args = p.parse_args()
     try:
-        while True:
-            server.join(2)
-            if not server.is_alive():
-                break
+        asyncio.run(amain(args))
     except KeyboardInterrupt:
         print('Stopping...')
-        server.close()
 
 
 if __name__ == '__main__':
@@ -3157,7 +3161,7 @@ PYEOF
 }
 
 install_pyproxy() {
-    echo -e "\n${C_BOLD}${C_PURPLE}--- 🐍 Install PY SOCKS/WS Proxy (legacy) ---${C_RESET}"
+    echo -e "\n${C_BOLD}${C_PURPLE}--- 🐍 Install PY SOCKS/WS Proxy (Cloudflare / CloudFront ready) ---${C_RESET}"
 
     if [ -f "$PYPROXY_SOCKS_SERVICE" ] || [ -f "$PYPROXY_WS_SERVICE" ]; then
         echo -e "${C_YELLOW}ℹ️ PY SOCKS/WS Proxy is already installed.${C_RESET}"
@@ -3173,8 +3177,8 @@ install_pyproxy() {
     local socks_port ws_port
     read -p "👉 Port for SOCKS/CONNECT proxy (HTTP 200 response) [8888]: " socks_port
     socks_port=${socks_port:-8888}
-    read -p "👉 Port for WebSocket-style proxy (HTTP 101 response) [444]: " ws_port
-    ws_port=${ws_port:-444}
+    read -p "👉 Port for WebSocket-style proxy (HTTP 101 response, Cloudflare/CloudFront ready) [8080]: " ws_port
+    ws_port=${ws_port:-8080}
 
     for p in "$socks_port" "$ws_port"; do
         if ! [[ "$p" =~ ^[0-9]+$ ]] || [ "$p" -lt 1 ] || [ "$p" -gt 65535 ]; then
@@ -3202,9 +3206,13 @@ After=network.target
 [Service]
 User=root
 Type=simple
-ExecStart=/usr/bin/python3 $PYPROXY_SCRIPT -p $socks_port --response-code 200 --response-msg @Labokingfreesurf --default-host 0.0.0.0:22
+ExecStart=/usr/bin/python3 $PYPROXY_SCRIPT -p $socks_port --response-code 200 --response-msg @Labokingfreesurf --default-host 127.0.0.1:22
 Restart=always
-RestartSec=2s
+RestartSec=1s
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitMEMLOCK=infinity
+TasksMax=infinity
 
 [Install]
 WantedBy=default.target
@@ -3212,7 +3220,7 @@ EOF
 
     cat > "$PYPROXY_WS_SERVICE" <<EOF
 [Unit]
-Description=NOVA XTUNNEL PY WebSocket Proxy
+Description=NOVA XTUNNEL PY WebSocket Proxy (Cloudflare/CloudFront)
 After=network.target
 
 [Service]
@@ -3220,7 +3228,11 @@ User=root
 Type=simple
 ExecStart=/usr/bin/python3 $PYPROXY_SCRIPT -p $ws_port --response-code 101 --response-msg @Labokingfreesurf --default-host 127.0.0.1:22
 Restart=always
-RestartSec=2s
+RestartSec=1s
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitMEMLOCK=infinity
+TasksMax=infinity
 
 [Install]
 WantedBy=default.target
@@ -3235,9 +3247,9 @@ EOF
     sleep 2
 
     if systemctl is-active --quiet pyproxy-socks.service && systemctl is-active --quiet pyproxy-ws.service; then
-        echo -e "\n${C_GREEN}✅ SUCCESS: PY SOCKS/WS Proxy installed and active.${C_RESET}"
-        echo -e "   - SOCKS proxy port: ${C_YELLOW}$socks_port${C_RESET} (HTTP 200)"
-        echo -e "   - WebSocket proxy port: ${C_YELLOW}$ws_port${C_RESET} (HTTP 101)"
+        echo -e "\n${C_GREEN}✅ SUCCESS: PY SOCKS/WS Proxy (Cloudflare/CloudFront ready) installed and active.${C_RESET}"
+        echo -e "   - SOCKS proxy port: ${C_YELLOW}$socks_port${C_RESET} (HTTP 200 @Labokingfreesurf)"
+        echo -e "   - WebSocket proxy port: ${C_YELLOW}$ws_port${C_RESET} (HTTP 101 @Labokingfreesurf + WS Headers)"
     else
         echo -e "\n${C_RED}❌ ERROR: one of the services failed to start.${C_RESET}"
         journalctl -u pyproxy-socks.service -u pyproxy-ws.service -n 20 --no-pager
@@ -3258,6 +3270,7 @@ uninstall_pyproxy() {
     rm -f "$PYPROXY_CONFIG_FILE"
     echo -e "${C_GREEN}✅ PY SOCKS/WS Proxy has been uninstalled successfully.${C_RESET}"
 }
+
 
 # --- ZiVPN Installation Logic ---
 install_zivpn() {
